@@ -1,0 +1,17 @@
+# Compilación de la app
+app/build/
+
+# Generado por el instalador en cada equipo (lleva rutas locales)
+.codex/hooks.json
+
+# Datos personales en tiempo de ejecución
+notas/*
+!notas/.gitkeep
+registros/*
+!registros/.gitkeep
+.claude/settings.local.json
+.env
+*.env
+
+# Sistema
+.DS_Store
