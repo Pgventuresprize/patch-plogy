@@ -193,7 +193,9 @@ if (Test-Path $publicado) {
   if ($interactivo) { $r = Read-Host "  ¿Abrir $nombre cada vez que prendas el computador? (S/n)"; $alIniciar = $r -notmatch '^[nN]' }
   $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   if ($alIniciar) { Set-ItemProperty $run -Name 'PATCH' -Value "`"$exe`"" } else { Remove-ItemProperty $run -Name 'PATCH' -ErrorAction SilentlyContinue }
-  Start-Process $exe
+  # Se abre a través del Explorador: así arranca con el entorno normal del usuario, aunque este instalador lo haya
+  # corrido otra herramienta (por ejemplo, Claude Code desde una terminal).
+  Start-Process explorer.exe -ArgumentList "`"$exe`""
   $appInstalada = $true
   Write-Host "  ✓ App de voz instalada y abierta (menú Inicio > PATCH)"
 } else {

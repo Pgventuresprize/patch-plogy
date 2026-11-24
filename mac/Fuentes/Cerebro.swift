@@ -203,6 +203,10 @@ final class Cerebro {
         p.arguments = args
         p.currentDirectoryURL = URL(fileURLWithPath: Ajustes.carpeta)
         var env = ProcessInfo.processInfo.environment
+        // Si PATCH se abrió desde otra sesión de Claude Code, hereda variables de esa sesión: no deben pasar a Claude.
+        let deSesion = try? NSRegularExpression(pattern:
+            "^(CLAUDECODE|CLAUDE_PID|CLAUDE_AGENT_SDK_VERSION|AI_AGENT|MCP_CONNECTION_NONBLOCKING|CLAUDE_CODE_(ENTRYPOINT|IGNORE_PERSISTED_TRUST|CHILD_.*|SESSION.*|MESSAGING.*|EMIT_STARTUP_TIMING|ENABLE_SDK_FILE_CHECKPOINTING|ENABLE_TASKS|QUESTION_PREVIEW_FORMAT|STARTUP_FAILURE_RESULTS|SSE_PORT))$")
+        for k in env.keys where deSesion?.firstMatch(in: k, range: NSRange(k.startIndex..., in: k)) != nil { env.removeValue(forKey: k) }
         env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         env["PATCH_APP"] = "1"
         p.environment = env

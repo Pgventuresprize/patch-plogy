@@ -151,8 +151,24 @@ public sealed class Cerebro
         if (extra != null) reglas.AddRange(extra);
         if (reglas.Count > 0) { args.Add("--allowedTools"); args.AddRange(reglas); }
         foreach (var a in args) psi.ArgumentList.Add(a);
+        LimpiarEntorno(psi.Environment);
         psi.Environment["PATCH_APP"] = "1";
         return psi;
+    }
+
+    /// <summary>
+    /// Si PATCH se abrió desde otra sesión de Claude Code (por ejemplo, un instalador corrido por un agente),
+    /// hereda variables de esa sesión (su id, su canal de mensajes, "ignorar la confianza"...). No deben pasar a Claude.
+    /// </summary>
+    static readonly System.Text.RegularExpressions.Regex VariablesDeSesion = new(
+        "^(CLAUDECODE|CLAUDE_PID|CLAUDE_AGENT_SDK_VERSION|AI_AGENT|MCP_CONNECTION_NONBLOCKING|" +
+        "CLAUDE_CODE_(ENTRYPOINT|IGNORE_PERSISTED_TRUST|CHILD_.*|SESSION.*|MESSAGING.*|EMIT_STARTUP_TIMING|" +
+        "ENABLE_SDK_FILE_CHECKPOINTING|ENABLE_TASKS|QUESTION_PREVIEW_FORMAT|STARTUP_FAILURE_RESULTS|SSE_PORT))$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    public static void LimpiarEntorno(IDictionary<string, string?> entorno)
+    {
+        foreach (var k in entorno.Keys.Where(k => VariablesDeSesion.IsMatch(k)).ToList()) entorno.Remove(k);
     }
 
     /// <summary>Abre el proceso de Claude por adelantado (al arrancar la app), para que la primera orden no espere.</summary>
