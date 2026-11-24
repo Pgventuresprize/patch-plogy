@@ -6,6 +6,9 @@ name: Compilar app de Windows
 
 on:
   push:
+    # Con "tags" y sin "branches", GitHub ignora los push a ramas: hay que nombrar ambas.
+    branches:
+      - "**"
     paths:
       - "windows/**"
       - "ui/**"
