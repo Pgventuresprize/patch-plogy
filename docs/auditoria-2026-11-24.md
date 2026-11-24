@@ -1,4 +1,7 @@
-# Auditoría de Jarvis / P.A.T.C.H — 24 de noviembre de 2026
+# Auditoría de PATCH — 24 de noviembre de 2026
+
+> Documento histórico: en esta versión el asistente todavía se llamaba "Jarvis". Desde la rama `patch-app`
+> el sistema es **PATCH** y cada persona elige el nombre de su asistente (por defecto, Patch).
 
 Probado en Windows 10 Pro (PowerShell 5.1, Claude Code 2.1.312, sin Git Bash, Escritorio en OneDrive).
 La parte de Mac (scripts `.sh`/`.js` y la app Swift) se revisó leyendo el código: aquí no se puede ejecutar.

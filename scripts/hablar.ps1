@@ -1,4 +1,4 @@
-﻿# Jarvis habla en Windows.
+﻿# PATCH habla en Windows.
 #
 # Modo hook (sin parámetros): Claude Code o Codex mandan por stdin el JSON de la respuesta.
 #   Se guarda, se corta la voz anterior y se lanza la voz en segundo plano. El hook sale enseguida.
@@ -6,26 +6,26 @@
 # Modo prueba (-Texto "..."): dice ese texto en primer plano (lo usa el instalador).
 #
 # Motor de voz, en este orden:
-#   1. Voz neuronal de Edge (natural, gratis, necesita internet y Node). Se elige con voz_edge= en jarvis-config.txt.
+#   1. Voz neuronal de Edge (natural, gratis, necesita internet y Node). Se elige con voz_edge= en patch-config.txt.
 #   2. Voz del sistema en español (SAPI). Si no hay ninguna instalada, la voz por defecto de Windows.
 # Este archivo debe guardarse en UTF-8 CON BOM: Windows PowerShell 5.1 lee como ANSI los .ps1 sin BOM.
 param([string]$Ruta = "", [string]$Texto = "", [int]$Max = 0)
 
 $raiz = Split-Path $PSScriptRoot -Parent
-$archivoConfig = Join-Path $raiz 'jarvis-config.txt'
-$archivoPid = Join-Path $env:TEMP 'jarvis-voz.pid'
+$archivoConfig = Join-Path $raiz 'patch-config.txt'
+$archivoPid = Join-Path $env:TEMP 'patch-voz.pid'
 $utf8 = New-Object Text.UTF8Encoding $false
-$archivoLog = Join-Path $env:TEMP 'jarvis-voz.log'
+$archivoLog = Join-Path $env:TEMP 'patch-voz.log'
 $reloj = [Diagnostics.Stopwatch]::StartNew()
 
-function Write-JarvisLog([string]$m) {
+function Write-PatchLog([string]$m) {
   try {
     $linea = '{0:yyyy-MM-dd HH:mm:ss} [{1}] +{2}ms {3}' -f (Get-Date), $PID, $reloj.ElapsedMilliseconds, $m
     [IO.File]::AppendAllText($archivoLog, $linea + "`r`n", $utf8)
   } catch {}
 }
 
-function Get-JarvisConfig {
+function Get-PatchConfig {
   $c = @{ voz = 'on'; max_caracteres = '600'; voz_edge = 'es-CO-GonzaloNeural' }
   if (Test-Path $archivoConfig) {
     foreach ($l in [IO.File]::ReadAllLines($archivoConfig, $utf8)) {
@@ -36,7 +36,7 @@ function Get-JarvisConfig {
   return $c
 }
 
-function Stop-JarvisVoz {
+function Stop-PatchVoz {
   if (-not (Test-Path $archivoPid)) { return }
   $id = 0
   if ([int]::TryParse(([IO.File]::ReadAllText($archivoPid)).Trim(), [ref]$id) -and $id -ne $PID) {
@@ -77,7 +77,7 @@ function Split-Frases([string]$t) {
 }
 
 function Start-AudioEdge([string]$t, [string]$voz, [int]$n) {
-  $carpeta = Join-Path $env:TEMP ("jarvis-voz-$PID-$n")
+  $carpeta = Join-Path $env:TEMP ("patch-voz-$PID-$n")
   New-Item -ItemType Directory -Force -Path $carpeta | Out-Null
   $txt = Join-Path $carpeta 'texto.txt'
   [IO.File]::WriteAllText($txt, $t, $utf8)
@@ -90,7 +90,7 @@ function Start-AudioEdge([string]$t, [string]$voz, [int]$n) {
 function Wait-AudioEdge($a) {
   $a.Proceso.WaitForExit()
   $mp3 = Join-Path $a.Carpeta 'audio.mp3'
-  Write-JarvisLog "edge parte $($a.N) lista (código $($a.Proceso.ExitCode))"
+  Write-PatchLog "edge parte $($a.N) lista (código $($a.Proceso.ExitCode))"
   if ($a.Proceso.ExitCode -ne 0 -or -not (Test-Path $mp3) -or (Get-Item $mp3).Length -lt 1000) { return $null }
   return $mp3
 }
@@ -101,7 +101,7 @@ function Invoke-Mp3([string]$mp3) {
   $mp.Open([Uri]$mp3)
   for ($i = 0; $i -lt 50 -and -not $mp.NaturalDuration.HasTimeSpan; $i++) { Start-Sleep -Milliseconds 100 }
   if (-not $mp.NaturalDuration.HasTimeSpan) { $mp.Close(); return $false }
-  Write-JarvisLog "reproduciendo $([Math]::Round($mp.NaturalDuration.TimeSpan.TotalSeconds, 1)) s"
+  Write-PatchLog "reproduciendo $([Math]::Round($mp.NaturalDuration.TimeSpan.TotalSeconds, 1)) s"
   $mp.Play()
   Start-Sleep -Milliseconds ([int]($mp.NaturalDuration.TimeSpan.TotalMilliseconds) + 150)
   $mp.Close()
@@ -141,10 +141,10 @@ function Invoke-VozSistema([string]$t) {
 function Invoke-Decir([string]$t, $cfg) {
   if (-not $t) { return }
   [IO.File]::WriteAllText($archivoPid, "$PID")
-  Write-JarvisLog "voz para $($t.Length) caracteres"
+  Write-PatchLog "voz para $($t.Length) caracteres"
   try {
-    if (-not (Invoke-VozEdge $t $cfg.voz_edge)) { Write-JarvisLog 'sin voz de Edge: uso la de Windows'; Invoke-VozSistema $t }
-    Write-JarvisLog 'terminó de hablar'
+    if (-not (Invoke-VozEdge $t $cfg.voz_edge)) { Write-PatchLog 'sin voz de Edge: uso la de Windows'; Invoke-VozSistema $t }
+    Write-PatchLog 'terminó de hablar'
   } finally {
     if ((Test-Path $archivoPid) -and ([IO.File]::ReadAllText($archivoPid)).Trim() -eq "$PID") {
       Remove-Item $archivoPid -Force -ErrorAction SilentlyContinue
@@ -152,7 +152,7 @@ function Invoke-Decir([string]$t, $cfg) {
   }
 }
 
-$cfg = Get-JarvisConfig
+$cfg = Get-PatchConfig
 if ($Max -le 0) { $Max = [int]$cfg.max_caracteres }
 
 # --- Modo prueba ---
@@ -163,14 +163,14 @@ if (-not $Ruta) {
   # stdin llega en UTF-8; [Console]::In usaría la página de códigos de la consola y dañaría las tildes.
   $lector = New-Object IO.StreamReader([Console]::OpenStandardInput(), $utf8)
   $entrada = $lector.ReadToEnd()
-  if ($env:JARVIS_APP) { exit 0 }            # la app de voz habla por su cuenta
+  if ($env:PATCH_APP) { exit 0 }            # la app de voz habla por su cuenta
   if ($cfg.voz -eq 'off') { exit 0 }
-  Stop-JarvisVoz
+  Stop-PatchVoz
   # Carpetas de audio que quedaron de voces cortadas a la mitad.
-  Get-ChildItem $env:TEMP -Directory -Filter 'jarvis-voz-*' -ErrorAction SilentlyContinue |
+  Get-ChildItem $env:TEMP -Directory -Filter 'patch-voz-*' -ErrorAction SilentlyContinue |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddMinutes(-10) } |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-  $tmp = Join-Path $env:TEMP 'jarvis-ultima-respuesta.json'
+  $tmp = Join-Path $env:TEMP 'patch-ultima-respuesta.json'
   [IO.File]::WriteAllText($tmp, $entrada, $utf8)
   Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Ruta', "`"$tmp`"", '-Max', $Max)

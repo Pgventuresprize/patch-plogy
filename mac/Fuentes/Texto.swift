@@ -24,7 +24,7 @@ enum Texto {
         return prev[b.count]
     }
 
-    /// "yarvis", "jarbis", "jervis"… cuentan como "jarvis".
+    /// Pequeñas diferencias de transcripción ("pach", "patc"…) cuentan como el nombre.
     static func parecido(_ palabra: String, _ nombre: String) -> Bool {
         let tolerancia = nombre.count <= 4 ? 0 : (nombre.count <= 7 ? 1 : 2)
         return distancia(palabra, nombre) <= tolerancia

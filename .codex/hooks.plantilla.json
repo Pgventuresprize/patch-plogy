@@ -1,5 +1,5 @@
 {
-  "description": "Jarvis: lee en voz alta cada respuesta y se calla cuando le vuelves a hablar",
+  "description": "PATCH: lee en voz alta cada respuesta y se calla cuando le vuelves a hablar",
   "hooks": {
     "Stop": [
       { "hooks": [ { "type": "command", "command": "{{CMD_HABLAR}}", "timeout": 10 } ] }

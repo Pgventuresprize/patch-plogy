@@ -31,7 +31,7 @@ struct Resultado {
     var error: Bool
 }
 
-/// Corre el Jarvis de ~/jarvis con Claude Code en modo sin pantalla y conserva la conversación.
+/// Corre PATCH (la carpeta del proyecto) con Claude Code en modo sin pantalla y conserva la conversación.
 final class Cerebro {
     private(set) var sesion: String?
     private var ultimaVez = Date.distantPast
@@ -60,6 +60,8 @@ final class Cerebro {
         if Date().timeIntervalSince(ultimaVez) > 15 * 60 { sesion = nil }
 
         var args = ["-p", "--output-format", "stream-json", "--verbose",
+                    "--model", Ajustes.modelo,
+                    "--disallowedTools", "mcp__claude-in-chrome",
                     "--append-system-prompt", Cerebro.indicacion]
         if let s = sesion { args += ["--resume", s] }
         if !permitir.isEmpty { args += ["--allowedTools"] + permitir }
@@ -71,7 +73,7 @@ final class Cerebro {
         p.currentDirectoryURL = URL(fileURLWithPath: Ajustes.carpeta)
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        env["JARVIS_APP"] = "1"
+        env["PATCH_APP"] = "1"
         p.environment = env
 
         let salida = Pipe(), entrada = Pipe(), errores = Pipe()
@@ -155,12 +157,15 @@ final class Cerebro {
         }
     }
 
-    static let indicacion = """
-    Estás respondiendo desde la app de voz de Jarvis en la barra de menú del Mac. El usuario te habla por voz \
-    y no ve ninguna terminal: tu respuesta se lee en voz alta y se muestra en una ventanita pequeña. \
+    static var indicacion: String { """
+    Estás respondiendo desde la app de PATCH en la barra de menú del Mac. Te llamas \(Ajustes.nombre). \
+    El usuario te habla por voz o te escribe en la barra lateral, y no ve ninguna terminal: tu respuesta se lee \
+    en voz alta y se muestra en una ventanita pequeña. Trabajas en segundo plano: nunca uses el mouse, el teclado \
+    ni el navegador del usuario. Abre algo en pantalla solo si el resultado es para verlo. \
     No puedes mostrar diálogos de permiso: si una acción necesita permiso, inténtala igual y la app le pedirá \
-    la autorización al usuario por voz. Tus reglas de confirmación hablada siguen vigentes.
-    """
+    la autorización al usuario (por voz, o por escrito si es borrar, enviar o compartir). \
+    Tus reglas de confirmación siguen vigentes.
+    """ }
 
     static func rutaClaude() -> String? {
         let opciones = ["\(NSHomeDirectory())/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]

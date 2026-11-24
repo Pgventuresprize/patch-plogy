@@ -30,7 +30,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Arranque
 
     func applicationDidFinishLaunching(_ n: Notification) {
-        Registro.log("Jarvis arrancó")
+        Registro.log("PATCH arrancó")
         panel = Panel(vista: vista)
         vista.alTocar = { [weak self] in self?.tocarPanel() }
         vista.alBoton = { [weak self] si in self?.boton(si) }
@@ -62,13 +62,13 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             SFSpeechRecognizer.requestAuthorization { estado in
                 DispatchQueue.main.async {
                     guard ok else {
-                        self.avisar("Jarvis no tiene micrófono",
-                                    "Dale permiso en Ajustes del Sistema › Privacidad y seguridad › Micrófono, y vuelve a abrir Jarvis.")
+                        self.avisar("\(Ajustes.nombre) no tiene micrófono",
+                                    "Dale permiso en Ajustes del Sistema › Privacidad y seguridad › Micrófono, y vuelve a abrir PATCH.")
                         return
                     }
                     guard estado == .authorized else {
-                        self.avisar("Jarvis no puede entender tu voz",
-                                    "Dale permiso en Ajustes del Sistema › Privacidad y seguridad › Reconocimiento de voz, y vuelve a abrir Jarvis.")
+                        self.avisar("\(Ajustes.nombre) no puede entender tu voz",
+                                    "Dale permiso en Ajustes del Sistema › Privacidad y seguridad › Reconocimiento de voz, y vuelve a abrir PATCH.")
                         return
                     }
                     self.arrancarAudio()
@@ -294,7 +294,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.mostrar()
         turnoVoz += 1
         let turno = turnoVoz
-        if ConfigJarvis.vozActiva {
+        if ConfigPatch.vozActiva {
             boca.decir(t) { [weak self] in
                 guard let self = self, self.turnoVoz == turno, self.fase == .hablando else { return }
                 self.entrarSeguimiento()
@@ -387,7 +387,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         sens.submenu = sub
         menu.addItem(sens)
-        menu.addItem(accion("Leer respuestas en voz alta", #selector(alternarVoz), marcado: ConfigJarvis.vozActiva))
+        menu.addItem(accion("Leer respuestas en voz alta", #selector(alternarVoz), marcado: ConfigPatch.vozActiva))
         menu.addItem(accion("Cambiar nombre…", #selector(cambiarNombre)))
         menu.addItem(.separator())
         menu.addItem(accion("Nueva conversación", #selector(nuevaConversacion)))
@@ -453,8 +453,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func alternarVoz() {
-        ConfigJarvis.vozActiva.toggle()
-        if !ConfigJarvis.vozActiva { boca.callar() }
+        ConfigPatch.vozActiva.toggle()
+        if !ConfigPatch.vozActiva { boca.callar() }
     }
 
     @objc private func cambiarNombre() {

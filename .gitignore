@@ -10,6 +10,7 @@ notas/*
 registros/*
 !registros/.gitkeep
 .claude/settings.local.json
+patch-config.txt
 .env
 *.env
 

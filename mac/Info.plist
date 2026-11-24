@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>com.plogy.patch</string>
+    <key>CFBundleName</key><string>PATCH</string>
+    <key>CFBundleDisplayName</key><string>PATCH</string>
+    <key>CFBundleExecutable</key><string>PATCH</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleDevelopmentRegion</key><string>es</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>PATCH escucha cuando dices el nombre de tu asistente o das dos palmadas. El audio se procesa dentro de tu Mac.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>PATCH convierte tu voz en texto dentro de tu Mac para entender lo que le pides.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>PATCH abre apps y lee tu calendario cuando se lo pides.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>PATCH lee tu agenda cuando le preguntas qué tienes hoy.</string>
+</dict>
+</plist>

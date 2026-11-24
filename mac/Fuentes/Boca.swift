@@ -9,9 +9,9 @@ final class Boca {
 
     func decir(_ texto: String, fin: @escaping () -> Void) {
         callar()
-        let limpio = Texto.paraVoz(texto, max: ConfigJarvis.maxCaracteres)
+        let limpio = Texto.paraVoz(texto, max: ConfigPatch.maxCaracteres)
         guard !limpio.isEmpty else { fin(); return }
-        let ruta = NSTemporaryDirectory() + "jarvis-app-voz.txt"
+        let ruta = NSTemporaryDirectory() + "patch-app-voz.txt"
         try? limpio.write(toFile: ruta, atomically: true, encoding: .utf8)
 
         let p = Process()

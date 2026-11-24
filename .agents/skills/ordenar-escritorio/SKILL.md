@@ -32,7 +32,8 @@ Di el plan en UNA o DOS frases ("Tienes 34 archivos sueltos: 18 capturas, 9 PDFs
 ## 5. Ejecutar (solo con el sí)
 - Crea solo las carpetas que hagan falta, dentro del mismo Escritorio.
 - Mueve sin sobrescribir nunca (Mac/Linux: `mv -n`; Windows: `Move-Item` SIN `-Force`, que falla si el destino ya existe).
-- NUNCA borres. Nada de `rm`.
+- Un archivo por comando, para que no pida permiso a cada rato.
+- NUNCA borres (la única vía de borrado es la de AGENTS.md, con confirmación escrita).
 - Guarda un registro para deshacer en `registros/ordenar-AAAA-MM-DD-HHMM.txt` con una línea por archivo: `origen -> destino`.
 
 ## 6. Cerrar

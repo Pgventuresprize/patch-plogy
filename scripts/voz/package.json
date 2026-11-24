@@ -1,7 +1,7 @@
 {
-  "name": "jarvis-voz",
+  "name": "patch-voz",
   "private": true,
-  "description": "Voz neuronal de Edge para Jarvis en Windows (la instala instalar.ps1 si hay Node)",
+  "description": "Voz neuronal de Edge para PATCH en Windows (la instala instalar.ps1 si hay Node)",
   "type": "module",
   "dependencies": {
     "msedge-tts": "2.1.1"
