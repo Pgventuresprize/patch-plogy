@@ -19,3 +19,8 @@ patch-config.txt
 
 # Voz natural de Windows (la instala instalar.ps1)
 scripts/voz/node_modules/
+
+# Compilación de la app de Windows
+windows/PATCH/bin/
+windows/PATCH/obj/
+windows/publicado/

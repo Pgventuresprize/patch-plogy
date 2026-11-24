@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PATCH</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="cabecera">
+    <div class="identidad">
+      <div class="avatar" id="avatar" aria-hidden="true">P</div>
+      <div class="nombres">
+        <div class="nombre" id="nombre">Patch</div>
+        <div class="estado" id="estado">Listo</div>
+      </div>
+    </div>
+    <div class="acciones">
+      <button class="icono" id="btnMic" title="Micrófono" aria-label="Micrófono">
+        <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/><path class="tachado" d="M4 4l16 16"/></svg>
+      </button>
+      <button class="icono" id="btnVoz" title="Leer en voz alta" aria-label="Leer en voz alta">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path class="ondas" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="tachado" d="M16 9l5 6M21 9l-5 6"/></svg>
+      </button>
+      <button class="icono" id="btnAjustes" title="Ajustes" aria-label="Ajustes">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+      </button>
+      <button class="icono" id="btnCerrar" title="Cerrar la barra" aria-label="Cerrar la barra">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="medidor" id="medidor"><div id="nivel"></div></div>
+
+  <main class="chat" id="chat" aria-live="polite">
+    <div class="vacio" id="vacio">
+      <div class="vacio-titulo">Hola<span id="saludoUsuario"></span>.</div>
+      <p>Dime <b>«<span class="nombreAsistente">Patch</span>»</b> y lo que necesitas, o escríbeme aquí abajo.</p>
+      <div class="sugerencias">
+        <button data-texto="¿Qué tengo hoy?">¿Qué tengo hoy?</button>
+        <button data-texto="Busca el último contrato que descargué">Busca el último contrato que descargué</button>
+        <button data-texto="Ordena mis descargas">Ordena mis descargas</button>
+        <button data-texto="¿Qué tengo en Drive de esta semana?">¿Qué tengo en Drive de esta semana?</button>
+      </div>
+    </div>
+  </main>
+
+  <section class="tarjeta confirmar" id="confirmar" hidden>
+    <div class="tarjeta-titulo">Confirmación escrita</div>
+    <p class="tarjeta-texto">Quiero <b id="confAccion">borrar</b>: <span id="confDescripcion"></span></p>
+    <pre class="tarjeta-detalle" id="confDetalle"></pre>
+    <label class="tarjeta-label" for="confEscrito">Para confirmar, escribe <b id="confPalabra">BORRAR</b></label>
+    <input id="confEscrito" autocomplete="off" spellcheck="false">
+    <div class="tarjeta-botones">
+      <button class="boton principal" id="confSi" disabled>Confirmar</button>
+      <button class="boton" id="confNo">Cancelar</button>
+    </div>
+  </section>
+
+  <section class="tarjeta permiso" id="permiso" hidden>
+    <div class="tarjeta-titulo">Necesito tu permiso</div>
+    <p class="tarjeta-texto" id="permDescripcion"></p>
+    <pre class="tarjeta-detalle" id="permDetalle"></pre>
+    <div class="tarjeta-botones">
+      <button class="boton principal" id="permSi">Sí, hazlo</button>
+      <button class="boton" id="permNo">No</button>
+    </div>
+  </section>
+
+  <div class="trabajando" id="trabajando" hidden>
+    <span class="puntos"><i></i><i></i><i></i></span>
+    <span id="trabajandoTexto">Pensando…</span>
+    <button class="detener" id="btnDetener">Detener</button>
+  </div>
+
+  <footer class="redactor">
+    <div class="caja">
+      <textarea id="entrada" rows="1" placeholder="Escríbele a Patch…"></textarea>
+      <button class="enviar" id="btnEnviar" aria-label="Enviar">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="pista" id="pista">Micrófono activo · di «Patch»</div>
+  </footer>
+
+  <!-- Ajustes -->
+  <section class="ajustes" id="ajustes" hidden>
+    <div class="ajustes-cabecera">
+      <button class="icono" id="btnVolver" aria-label="Volver"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="ajustes-titulo">Ajustes</div>
+    </div>
+    <div class="ajustes-cuerpo">
+      <div class="bienvenida" id="bienvenida" hidden>
+        <b>Bienvenido a PATCH.</b> Ponle nombre a tu asistente y dile cómo llamarte. Después calibra su nombre para que te reconozca mejor.
+      </div>
+
+      <h3>Tu asistente</h3>
+      <label class="campo">
+        <span>Nombre del asistente</span>
+        <input id="cfgAsistente" maxlength="24" placeholder="Patch">
+        <small>Se activa cuando dices este nombre. Funcionan mejor los nombres de dos o tres sílabas y poco comunes.</small>
+      </label>
+      <label class="campo">
+        <span>¿Cómo te llama a ti?</span>
+        <input id="cfgUsuario" maxlength="30" placeholder="jefe">
+      </label>
+      <div class="campo">
+        <span>Calibrar el nombre</span>
+        <small>Di el nombre tres veces para que aprenda cómo lo oye. Hazlo si a veces no te responde.</small>
+        <div class="calibracion" id="calibracion">
+          <button class="boton" id="btnCalibrar">Calibrar</button>
+          <div class="cal-estado" id="calEstado"></div>
+        </div>
+        <div class="chips" id="alias"></div>
+      </div>
+
+      <h3>Inteligencia</h3>
+      <label class="campo">
+        <span>Modelo</span>
+        <select id="cfgModelo"></select>
+        <small>Haiku responde más rápido; Opus piensa mejor las tareas difíciles.</small>
+      </label>
+
+      <h3>Voz</h3>
+      <label class="campo">
+        <span>Voz</span>
+        <div class="fila">
+          <select id="cfgVoz"></select>
+          <button class="boton" id="btnProbarVoz">Probar</button>
+        </div>
+      </label>
+      <label class="interruptor"><input type="checkbox" id="cfgLeer"><span>Leer las respuestas en voz alta</span></label>
+      <label class="interruptor"><input type="checkbox" id="cfgEscuchar"><span>Escuchar cuando digo su nombre</span></label>
+
+      <h3>Windows</h3>
+      <label class="interruptor"><input type="checkbox" id="cfgInicio"><span>Abrir PATCH al iniciar el computador</span></label>
+      <p class="nota">Atajo para hablarle sin decir el nombre: <b id="atajo">Ctrl+Alt+Espacio</b></p>
+
+      <h3>Seguridad</h3>
+      <p class="nota">Nunca borra por su cuenta. Borrar, enviar correos o compartir archivos exige que escribas la confirmación, y lo borrado va a la papelera.</p>
+
+      <h3>Más</h3>
+      <div class="enlaces">
+        <button class="enlace" data-abrir="notas">Abrir mis notas</button>
+        <button class="enlace" data-abrir="registro">Ver el registro</button>
+        <button class="enlace" data-abrir="carpeta">Carpeta de PATCH</button>
+        <button class="enlace" id="btnNueva">Empezar una conversación nueva</button>
+      </div>
+      <p class="version">PATCH by Plogy</p>
+    </div>
+  </section>
+
+</div>
+<script src="puente.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
