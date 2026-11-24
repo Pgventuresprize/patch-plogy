@@ -27,3 +27,19 @@ jobs:
       - name: Revisar la sintaxis de los scripts
         run: |
           for f in scripts/*.sh instalar.sh mac/construir.sh; do bash -n "$f" && echo "ok $f"; done
+      - name: Armar PATCH.app completo
+        run: |
+          bash mac/construir.sh
+          test -f "$HOME/Applications/PATCH.app/Contents/MacOS/PATCH" && echo "app ok"
+          test -f "$HOME/Applications/PATCH.app/Contents/Resources/ui/index.html" && echo "interfaz ok"
+      - name: Probar los scripts de archivos
+        run: |
+          mkdir -p "$HOME/PATCH-Pruebas" registros
+          echo "Contrato de prueba con Quality Services" > "$HOME/PATCH-Pruebas/contrato.txt"
+          textutil -convert docx "$HOME/PATCH-Pruebas/contrato.txt" -output "$HOME/PATCH-Pruebas/contrato.docx"
+          bash scripts/leer.sh "$HOME/PATCH-Pruebas/contrato.docx" | grep -q "Quality Services" && echo "leer.sh ok"
+          echo borrar > "$HOME/PATCH-Pruebas/borrame.txt"
+          bash scripts/papelera.sh "$HOME/PATCH-Pruebas/borrame.txt" /etc/hosts
+          test -e "$HOME/.Trash/borrame.txt" && test ! -e "$HOME/PATCH-Pruebas/borrame.txt" && echo "papelera.sh ok"
+          test -e /etc/hosts && echo "proteccion ok"
+          bash scripts/buscar.sh "Quality" documento 0 5 || true
