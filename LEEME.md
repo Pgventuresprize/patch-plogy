@@ -12,9 +12,12 @@ bash instalar.sh
 ```
 powershell -ExecutionPolicy Bypass -File .\instalar.ps1
 ```
+En Windows no hace falta Git Bash. Si tienes Node instalado, el instalador agrega una voz natural en español
+(la de Microsoft Edge, gratis, necesita internet). Si no, Jarvis usa la voz de Windows.
 
 ## Usar
 Abre una Terminal nueva y escribe `jarvis` (Claude Code) o `jarvis-codex` (Codex).
+**La primera vez**, Claude Code pregunta si confías en la carpeta: di que sí. Sin eso ignora los permisos de Jarvis.
 
 - **Hablarle en Claude Code:** escribe `/voice tap` una vez. Luego toca ESPACIO, habla y vuelve a tocar ESPACIO.
 - **Hablarle en Codex:** usa el dictado del sistema. En Mac, presiona dos veces la tecla Fn 🌐. En Windows, Win + H.
@@ -25,7 +28,8 @@ Abre una Terminal nueva y escribe `jarvis` (Claude Code) o `jarvis-codex` (Codex
 | Pieza | Archivo |
 |---|---|
 | Personalidad y reglas | `AGENTS.md` (Claude lo lee vía `CLAUDE.md`) |
-| Voz (boca) | `scripts/hablar.sh` + `hablar-mac.js` / `hablar.ps1` |
+| Voz (boca) | `scripts/hablar.sh` + `hablar-mac.js` (Mac) / `hablar.ps1` + `callar.ps1` + `voz/edge.mjs` (Windows) |
+| Registro de la voz en Windows | `%TEMP%\jarvis-voz.log` |
 | Permisos | `.claude/settings.json` |
 | Habilidades | `.claude/skills/` y `.agents/skills/` (copia para Codex) |
 | Notas que crea | `notas/` |

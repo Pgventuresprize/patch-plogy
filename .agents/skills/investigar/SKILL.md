@@ -14,4 +14,4 @@ description: Investiga un tema en internet y deja una nota con fuentes. Úsalo c
    - Qué no está claro o se contradice entre fuentes.
    - Lista de fuentes con enlace.
 4. Responde hablado en máximo 3 frases: lo más importante y "Te dejé la nota completa en tus notas".
-5. Pregunta si quiere que la abras (Mac: `open ruta`; Windows: `start "" "ruta"`).
+5. Pregunta si quiere que la abras (Mac: `open ruta`; Windows, en PowerShell: `Start-Process "ruta"`).

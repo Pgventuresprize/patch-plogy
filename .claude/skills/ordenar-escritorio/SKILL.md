@@ -7,7 +7,8 @@ description: Ordena el Escritorio del usuario en carpetas por tipo de archivo. �
 
 ## 1. Encontrar el escritorio
 - Mac: `~/Desktop`
-- Windows: `~/Desktop`, o `~/OneDrive/Desktop` / `~/OneDrive/Escritorio` si el primero está vacío.
+- Windows: la ruta real la da `[Environment]::GetFolderPath('Desktop')` en PowerShell
+  (casi siempre `~\OneDrive\Desktop` o `~\OneDrive\Escritorio` si OneDrive está activo).
 
 ## 2. Mirar qué hay
 Lista solo el primer nivel (sin entrar a carpetas). Ignora carpetas existentes, accesos directos y archivos ocultos.
@@ -30,7 +31,7 @@ Di el plan en UNA o DOS frases ("Tienes 34 archivos sueltos: 18 capturas, 9 PDFs
 
 ## 5. Ejecutar (solo con el sí)
 - Crea solo las carpetas que hagan falta, dentro del mismo Escritorio.
-- Mueve sin sobrescribir nunca (Mac/Linux: `mv -n`; Windows: comprobar que el destino no existe).
+- Mueve sin sobrescribir nunca (Mac/Linux: `mv -n`; Windows: `Move-Item` SIN `-Force`, que falla si el destino ya existe).
 - NUNCA borres. Nada de `rm`.
 - Guarda un registro para deshacer en `registros/ordenar-AAAA-MM-DD-HHMM.txt` con una línea por archivo: `origen -> destino`.
 

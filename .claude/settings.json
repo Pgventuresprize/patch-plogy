@@ -9,13 +9,20 @@
       "Bash(mkdir:*)",
       "Bash(date:*)",
       "Bash(osascript -l JavaScript scripts/agenda-mac.js)",
+      "Bash(mv -n:*)",
+      "PowerShell(Start-Process *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Date)",
+      "PowerShell(Get-Date *)",
+      "PowerShell(New-Item -ItemType Directory *)",
+      "PowerShell(Move-Item *)",
+      "PowerShell(Test-Path *)",
       "Read(~/Desktop/**)",
       "Read(~/Documents/**)",
       "Read(~/Downloads/**)",
       "Edit(jarvis-config.txt)",
-      "Write(notas/**)",
-      "Write(registros/**)",
-      "Bash(mv -n:*)",
+      "Edit(notas/**)",
+      "Edit(registros/**)",
       "mcp__claude_ai_Google_Calendar__list_calendars",
       "mcp__claude_ai_Google_Calendar__list_events",
       "mcp__claude_ai_Google_Calendar__search_events",
@@ -27,6 +34,7 @@
     "deny": [
       "Bash(rm:*)",
       "Bash(sudo:*)",
+      "PowerShell(Remove-Item *)",
       "Read(~/.ssh/**)",
       "Read(**/.env)"
     ],
@@ -36,14 +44,22 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hablar.sh\"", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "echo `# <#` >/dev/null\nbash \"${CLAUDE_PROJECT_DIR}/scripts/hablar.sh\"\nexit\n#> | Out-Null\npowershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/scripts/hablar.ps1\"",
+            "timeout": 10
+          }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/callar.sh\"", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "echo `# <#` >/dev/null\nbash \"${CLAUDE_PROJECT_DIR}/scripts/callar.sh\"\nexit\n#> | Out-Null\npowershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/scripts/callar.ps1\"",
+            "timeout": 10
+          }
         ]
       }
     ]
