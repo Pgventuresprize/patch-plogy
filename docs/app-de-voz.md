@@ -6,8 +6,13 @@ Para quien siga desarrollando PATCH. Explica cómo está armada la app, cómo se
 1. La app escucha todo el tiempo **dentro del computador** (no sale audio). Cuando una frase empieza por el nombre del
    asistente ("Patch, …" u "Oye Patch, …"), aparece la ventanita: sobre la barra de tareas en Windows, bajo la barra de
    menú en Mac.
-2. Lo que viene después del nombre es la orden. Se manda a Claude Code sin ventana (`claude -p --output-format stream-json`)
-   en la carpeta del proyecto, con el modelo elegido y sin las herramientas del navegador del usuario.
+2. Lo que viene después del nombre es la orden. Se manda a Claude Code sin ventana, en la carpeta del proyecto, con el
+   modelo elegido y sin las herramientas del navegador del usuario. **Claude queda abierto entre órdenes**
+   (`claude -p --input-format stream-json --output-format stream-json`), precalentado desde que arranca la app, y sin los
+   hooks de voz del proyecto (la app ya habla). Así cada turno arranca en ~1,5 s en vez de ~8 s. Medido con Sonnet:
+   "busca el contrato y dime la fecha" tardaba 26 s y ahora 8,8 s; una pregunta de seguimiento tarda 1,4 s.
+   Una acción ya confirmada va en un proceso aparte con ese permiso exacto y luego se reabre el proceso continuando la
+   conversación. La app quita del entorno las variables de otra sesión de Claude Code, por si la abrió un agente.
 3. La respuesta se muestra en la ventanita y se dice en voz alta. Después hay unos segundos para seguir hablando sin
    repetir el nombre: 7 s con la barra cerrada y 10 s con la barra abierta. Son cortos a propósito, para que una
    conversación cercana no se le mande como orden.
@@ -46,9 +51,14 @@ Las palabras muy comunes ("no", "la", "va"…) se rechazan, porque darían activ
 Medición con voces sintéticas (6 acentos) en Windows: 32 de 36 detecciones y 0 falsos positivos en 18 frases sin el
 nombre. Con voces reales todavía no se ha medido.
 
-## Compilar
+## Compilar y publicar
 - **Windows:** `powershell -ExecutionPolicy Bypass -File windows\publicar.ps1` (necesita el SDK de .NET 10) deja
   `windows\publicado\` (autocontenida, ~220 MB). `instalar.ps1` la copia a `%LOCALAPPDATA%\PATCH\app`.
+- **Versiones para estudiantes:** al crear una etiqueta `v*` (por ejemplo `git tag -a v2.0.1 -m ... && git push origin v2.0.1`),
+  `.github/workflows/windows.yml` compila en Windows y sube `PATCH-windows-x64.zip` (~90 MB) al release.
+  `instalar.ps1` la baja si no hay una versión compilada en la carpeta. **Mientras el repositorio sea privado**, esa
+  descarga solo funciona con GitHub CLI con sesión iniciada y acceso al repositorio. Para los estudiantes hay que hacer
+  públicos los releases (o el repositorio), o entregarles el .zip junto con la carpeta.
 - **Mac:** `bash mac/construir.sh`. GitHub Actions (`.github/workflows/mac.yml`) compila y prueba la app de Mac en cada
   cambio de `mac/` o `ui/`.
 
@@ -62,9 +72,9 @@ y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (po
 `PATCH.exe --salir` cierra la copia abierta de forma ordenada y devuelve el borde de la pantalla.
 
 ## Pendiente
-- Publicar la app de Windows ya compilada (GitHub Releases), para que los estudiantes no necesiten el SDK de .NET.
+- Decidir cómo reciben los estudiantes el .zip (releases públicos o entregado con la carpeta).
 - Medir la detección del nombre con voces reales y ruido de oficina.
 - Mac: probar en un Mac real (hoy solo está compilada y empaquetada en GitHub Actions). Reacomodar ventanas al abrir
   la barra exigiría el permiso de Accesibilidad.
-- Bajar la espera: un turno con Sonnet tarda de 10 a 30 s.
+- Lo que queda de espera es el trabajo real del modelo (búsquedas, lecturas). Con Haiku es más rápido.
 - Codex: los hooks se generan, pero no se ha probado.
