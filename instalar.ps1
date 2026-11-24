@@ -132,10 +132,52 @@ Write-Host ""
 Write-Host "  🔊 Probando la voz…"
 & (Join-Path $DIR 'scripts\hablar.ps1') -Texto "Hola. Soy $nombre, tu asistente. La instalación quedó lista."
 
+# 8. App de voz (se activa diciendo el nombre del asistente)
+Write-Host ""
+$publicado = Join-Path $DIR 'windows\publicado\PATCH.exe'
+if (-not (Test-Path $publicado)) {
+  $sdk = (Get-Command dotnet -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $HOME 'tools\dotnet\dotnet.exe'))
+  if ($sdk) {
+    Write-Host "  · Compilando la app de voz (un par de minutos)…"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $DIR 'windows\publicar.ps1') | Out-Null
+  }
+}
+$appInstalada = $false
+if (Test-Path $publicado) {
+  $destino = Join-Path $env:LOCALAPPDATA 'PATCH\app'
+  $exe = Join-Path $destino 'PATCH.exe'
+  if (Get-Process PATCH -ErrorAction SilentlyContinue) {
+    if (Test-Path $exe) { & $exe --salir; Start-Sleep 3 }
+    Get-Process PATCH -ErrorAction SilentlyContinue | Stop-Process -Force
+  }
+  New-Item -ItemType Directory -Force $destino | Out-Null
+  & robocopy (Split-Path $publicado) $destino /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+  [IO.File]::WriteAllText((Join-Path $env:LOCALAPPDATA 'PATCH\carpeta.txt'), $DIR, $utf8)
+  # Acceso en el menú Inicio
+  $atajo = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'PATCH.lnk'))
+  $atajo.TargetPath = $exe
+  $atajo.WorkingDirectory = $destino
+  $atajo.Description = "PATCH: tu asistente de voz ($nombre)"
+  $atajo.Save()
+  # Sin nadie que responda, no se activa solo: prender un micrófono permanente al iniciar es decisión del usuario.
+  $alIniciar = $false
+  if ($interactivo) { $r = Read-Host "  ¿Abrir $nombre cada vez que prendas el computador? (S/n)"; $alIniciar = $r -notmatch '^[nN]' }
+  $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+  if ($alIniciar) { Set-ItemProperty $run -Name 'PATCH' -Value "`"$exe`"" } else { Remove-ItemProperty $run -Name 'PATCH' -ErrorAction SilentlyContinue }
+  Start-Process $exe
+  $appInstalada = $true
+  Write-Host "  ✓ App de voz instalada y abierta (menú Inicio > PATCH)"
+} else {
+  Write-Host "  · La app de voz no está compilada. Para compilarla instala el SDK de .NET 10 y repite,"
+  Write-Host "    o usa la versión publicada de PATCH. Mientras tanto, usa PATCH desde la Terminal."
+}
+
 Write-Host ""
 Write-Host "  ¡Listo! Ahora:"
-Write-Host "   1. Cierra esta Terminal y abre una nueva."
-Write-Host "   2. Escribe:  patchai"
-Write-Host "   3. La primera vez, acepta que confías en la carpeta (sin eso no aplica sus permisos)."
-Write-Host "   4. Dentro, escribe:  /voice tap   (toca ESPACIO para hablar y otra vez para enviar)"
+if ($appInstalada) {
+  Write-Host "   · Di «$nombre» y lo que necesitas (o Ctrl+Alt+Espacio). Toca la ventanita para abrir la barra lateral."
+  Write-Host "   · La primera vez baja el reconocimiento de voz en español (38 MB)."
+}
+Write-Host "   · En la Terminal: abre una nueva y escribe  patchai"
+Write-Host "     La primera vez, acepta que confías en la carpeta (sin eso no aplica sus permisos)."
 Write-Host ""

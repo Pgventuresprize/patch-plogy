@@ -16,9 +16,10 @@ final class EstadoVista: ObservableObject {
     var alBoton: ((Bool) -> Void)?
 }
 
-private let magenta = Color(red: 0.91, green: 0.12, blue: 0.55)
-private let coral = Color(red: 1.0, green: 0.42, blue: 0.36)
-private let violeta = Color(red: 0.45, green: 0.30, blue: 0.95)
+// Naranja de Plogy (#FF5B00) con dos tonos vecinos para que el orbe se vea vivo.
+private let magenta = Color(red: 1.0, green: 0.357, blue: 0.0)
+private let coral = Color(red: 1.0, green: 0.60, blue: 0.25)
+private let violeta = Color(red: 0.85, green: 0.22, blue: 0.05)
 
 struct Orbe: View {
     let fase: FaseVista

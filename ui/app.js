@@ -82,6 +82,8 @@
     $("cfgModelo").value = cfg.modelo;
     if (cfg.voces) $("cfgVoz").innerHTML = cfg.voces.map((v) => `<option value="${v.id}">${escapar(v.nombre)}</option>`).join("");
     $("cfgVoz").value = cfg.vozEdge;
+    // Sin voces para elegir (Mac usa la del sistema): solo queda el botón de probar.
+    $("cfgVoz").hidden = !(cfg.voces && cfg.voces.length);
     $("cfgLeer").checked = !!cfg.voz;
     $("cfgEscuchar").checked = cfg.escucharNombre !== false;
     $("cfgInicio").checked = !!cfg.inicioWindows;

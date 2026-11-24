@@ -1,12 +1,43 @@
 import Foundation
 
+/// Normal: basta un "sí" por voz. El resto exige que el usuario ESCRIBA la palabra de confirmación.
+enum TipoPermiso: Int, Comparable {
+    case normal = 0, borrar, enviar, compartir
+    static func < (a: TipoPermiso, b: TipoPermiso) -> Bool { a.rawValue < b.rawValue }
+    var palabra: String? {
+        switch self {
+        case .normal: return nil
+        case .borrar: return "BORRAR"
+        case .enviar: return "ENVIAR"
+        case .compartir: return "COMPARTIR"
+        }
+    }
+    var accion: String {
+        switch self {
+        case .normal: return "hacer esto"
+        case .borrar: return "borrar (va a la papelera)"
+        case .enviar: return "enviar"
+        case .compartir: return "compartir"
+        }
+    }
+}
+
 /// Un permiso que Claude Code no pudo usar sin preguntar.
 struct Denegado {
     let herramienta: String
     let entrada: [String: Any]
 
+    var tipo: TipoPermiso {
+        let h = herramienta.lowercased()
+        let c = ((entrada["command"] as? String) ?? "").lowercased()
+        if h.contains("trash") || h.contains("delete") || c.contains("papelera.sh") || c.contains("papelera.ps1") || c.hasPrefix("rm ") { return .borrar }
+        if h.hasSuffix("send_message") || h.hasSuffix("__forward") || h.hasSuffix("__reply") { return .enviar }
+        if h.contains("share_file") || h.contains("permission") { return .compartir }
+        return .normal
+    }
+
     var regla: String {
-        if herramienta == "Bash", let c = entrada["command"] as? String { return "Bash(\(c))" }
+        if herramienta == "Bash" || herramienta == "PowerShell", let c = entrada["command"] as? String { return "\(herramienta)(\(c))" }
         return herramienta
     }
     var descripcion: String {
@@ -62,9 +93,13 @@ final class Cerebro {
         var args = ["-p", "--output-format", "stream-json", "--verbose",
                     "--model", Ajustes.modelo,
                     "--disallowedTools", "mcp__claude-in-chrome",
+                    "--add-dir", NSHomeDirectory(),
                     "--append-system-prompt", Cerebro.indicacion]
         if let s = sesion { args += ["--resume", s] }
-        if !permitir.isEmpty { args += ["--allowedTools"] + permitir }
+        // Sin pantalla, Claude Code ignora los permisos del proyecto si la carpeta no fue marcada como confiable:
+        // se le pasan explícitamente, más los que el usuario acaba de autorizar.
+        let reglas = Cerebro.permisosDelProyecto() + permitir
+        if !reglas.isEmpty { args += ["--allowedTools"] + reglas }
 
         let c = Corrida()
         let p = c.proceso
@@ -162,10 +197,27 @@ final class Cerebro {
     El usuario te habla por voz o te escribe en la barra lateral, y no ve ninguna terminal: tu respuesta se lee \
     en voz alta y se muestra en una ventanita pequeña. Trabajas en segundo plano: nunca uses el mouse, el teclado \
     ni el navegador del usuario. Abre algo en pantalla solo si el resultado es para verlo. \
+    Cada permiso que pidas interrumpe al usuario: usa solo comandos ya aprobados y simples. Para buscar archivos usa \
+    bash scripts/buscar.sh; para leer Word, Excel o PowerPoint, bash scripts/leer.sh; para PDF, la herramienta Read. \
+    Nunca escribas tu propio código para abrir o convertir archivos. \
     No puedes mostrar diálogos de permiso: si una acción necesita permiso, inténtala igual y la app le pedirá \
     la autorización al usuario (por voz, o por escrito si es borrar, enviar o compartir). \
     Tus reglas de confirmación siguen vigentes.
     """ }
+
+    static func permisosDelProyecto() -> [String] {
+        var r: [String] = []
+        for f in ["settings.json", "settings.local.json"] {
+            let ruta = Ajustes.carpeta + "/.claude/" + f
+            guard let d = FileManager.default.contents(atPath: ruta),
+                  let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+                  let p = o["permissions"] as? [String: Any],
+                  let a = p["allow"] as? [String] else { continue }
+            r += a
+        }
+        var vistos = Set<String>()
+        return r.filter { vistos.insert($0).inserted }
+    }
 
     static func rutaClaude() -> String? {
         let opciones = ["\(NSHomeDirectory())/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]

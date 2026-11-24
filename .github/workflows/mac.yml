@@ -1,0 +1,29 @@
+# Compila la app de PATCH para Mac en una máquina macOS de GitHub.
+# Así se verifica el código Swift aunque se desarrolle desde Windows.
+name: Compilar app de Mac
+
+on:
+  push:
+    paths:
+      - "mac/**"
+      - "ui/**"
+      - ".github/workflows/mac.yml"
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión de Swift
+        run: swiftc --version
+      - name: Compilar
+        run: |
+          swiftc -swift-version 5 -target arm64-apple-macos14.0 \
+            mac/Fuentes/*.swift \
+            -o "$RUNNER_TEMP/PATCH" \
+            -framework AppKit -framework SwiftUI -framework AVFoundation -framework Speech -framework Carbon -framework WebKit
+      - name: Revisar la sintaxis de los scripts
+        run: |
+          for f in scripts/*.sh instalar.sh mac/construir.sh; do bash -n "$f" && echo "ok $f"; done
