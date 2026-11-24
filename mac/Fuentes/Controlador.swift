@@ -58,6 +58,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.reiniciarAudio()
         }
         if Ajustes.microfono { pedirPermisos() }
+        cerebro.precalentar()
 
         if !UserDefaults.standard.bool(forKey: "bienvenidaHecha") {
             UserDefaults.standard.set(true, forKey: "bienvenidaHecha")
@@ -491,6 +492,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard ["asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres"].contains(clave) else { return }
             ConfigPatch.poner(clave, s("valor"))
             if clave == "asistente" { ConfigPatch.poner("alias", ""); cerebro.nuevaConversacion() }
+            if clave == "modelo" { cerebro.reconfigurar() }
             if clave == "escuchar_nombre" && fase == .reposo { volverAReposo(ocultar: false) }
             enviarConfig()
         case "confirmar":
@@ -680,6 +682,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func cambiarModelo(_ s: NSMenuItem) {
         Ajustes.modelo = ["haiku", "sonnet", "opus"][max(0, min(2, s.tag))]
+        cerebro.reconfigurar()
         enviarConfig()
     }
 

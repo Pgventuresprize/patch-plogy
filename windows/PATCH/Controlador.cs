@@ -67,6 +67,7 @@ public sealed class Controlador
         reloj.Start();
         VigilarConfig();
         boca.Preparar();
+        cerebro.Precalentar();
         _ = PrepararOido();
 
         var marca = Path.Combine(Config.Datos, "bienvenida.txt");
@@ -443,7 +444,7 @@ public sealed class Controlador
     {
         Registro.Log("PATCH se cerró");
         barra.Cerrar();
-        cerebro.Cancelar();
+        cerebro.Cerrar();
         boca.Dispose();
         oido.Dispose();
         atajo?.Dispose();
@@ -481,6 +482,7 @@ public sealed class Controlador
                 {
                     Config.Poner(clave, S("valor"));
                     if (clave == "asistente") { Config.Poner("alias", ""); cerebro.NuevaConversacion(); }
+                    if (clave == "modelo") cerebro.Reconfigurar();
                     RecalcularAlias();
                     EnviarConfig();
                 }

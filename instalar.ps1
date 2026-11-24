@@ -136,6 +136,35 @@ Write-Host "  🔊 Probando la voz…"
 Write-Host ""
 $publicado = Join-Path $DIR 'windows\publicado\PATCH.exe'
 if (-not (Test-Path $publicado)) {
+  # 1) Bajar la versión ya compilada del último release (no necesita nada instalado)
+  $zip = Join-Path $env:TEMP 'PATCH-windows-x64.zip'
+  Remove-Item $zip -ErrorAction SilentlyContinue
+  Write-Host "  · Bajando la app de voz (unos 90 MB)…"
+  $repo = 'Pgventuresprize/patch-plogy'
+  try {
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest "https://github.com/$repo/releases/latest/download/PATCH-windows-x64.zip" -OutFile $zip -UseBasicParsing
+  } catch {
+    # Si el repositorio es privado, la descarga pública falla: se intenta con la sesión de GitHub CLI.
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+      $ErrorActionPreference = 'Continue'
+      & gh release download --repo $repo --pattern 'PATCH-windows-x64.zip' --dir $env:TEMP --clobber 2>$null
+      if ($LASTEXITCODE -ne 0) {
+        $ultima = (& gh release list --repo $repo --limit 1 --json tagName --jq '.[0].tagName' 2>$null)
+        if ($ultima) { & gh release download $ultima --repo $repo --pattern 'PATCH-windows-x64.zip' --dir $env:TEMP --clobber 2>$null }
+      }
+      $ErrorActionPreference = 'Stop'
+    }
+  }
+  if (Test-Path $zip) {
+    $carpetaPub = Split-Path $publicado
+    New-Item -ItemType Directory -Force $carpetaPub | Out-Null
+    Expand-Archive $zip -DestinationPath $carpetaPub -Force
+    Remove-Item $zip -Force
+  }
+}
+if (-not (Test-Path $publicado)) {
+  # 2) Compilarla aquí, si hay SDK de .NET 10
   $sdk = (Get-Command dotnet -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $HOME 'tools\dotnet\dotnet.exe'))
   if ($sdk) {
     Write-Host "  · Compilando la app de voz (un par de minutos)…"

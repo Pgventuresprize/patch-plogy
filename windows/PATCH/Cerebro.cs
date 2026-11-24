@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Patch;
@@ -51,25 +52,29 @@ public sealed class Resultado
     public bool Error { get; init; }
 }
 
-/// <summary>Corre PATCH con Claude Code sin ventana (claude -p, stream-json) y conserva la conversación.</summary>
+/// <summary>
+/// Habla con Claude Code sin ventana. Mantiene UN proceso abierto (stream-json de entrada y salida) y le manda cada
+/// orden por la misma conexión: así cada turno tarda ~1,5 s en arrancar en vez de ~8 s.
+/// Para una acción ya confirmada por el usuario se usa un proceso aparte con ese permiso exacto, y luego se sigue.
+/// </summary>
 public sealed class Cerebro
 {
+    sealed class Turno
+    {
+        public readonly TaskCompletionSource<Resultado> Fin = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Action<string> Estado = _ => { };
+        public readonly List<Denegado> Denegados = new();
+    }
+
+    readonly object candado = new();
+    Process? vivo;
+    string firmaVivo = "";
+    Turno? turno;
     string? sesion;
     DateTime ultimaVez = DateTime.MinValue;
-    Process? proceso;
-    int corrida;
+    int generacion;
 
-    public bool Ocupado => proceso != null;
-    public void NuevaConversacion() { sesion = null; Registro.Log("Conversación nueva"); }
-
-    public void Cancelar()
-    {
-        var p = proceso;
-        proceso = null;
-        corrida++;
-        try { if (p is { HasExited: false }) p.Kill(true); } catch { }
-        if (p != null) Registro.Log("Consulta cancelada");
-    }
+    public bool Ocupado => turno != null;
 
     public static string? RutaClaude()
     {
@@ -104,6 +109,14 @@ public sealed class Cerebro
         return r.Distinct().ToList();
     }
 
+    /// <summary>La app ya habla y se calla sola: los hooks de voz del proyecto solo le sumarían ~2 s por turno.</summary>
+    static string AjustesSinHooks()
+    {
+        var ruta = Path.Combine(Config.Datos, "claude-sin-hooks.json");
+        if (!File.Exists(ruta)) File.WriteAllText(ruta, "{\"disableAllHooks\": true}");
+        return ruta;
+    }
+
     static string Indicacion() =>
         $"Estás respondiendo desde la app de PATCH en Windows. Te llamas {Config.Asistente}. " +
         "El usuario te habla por voz o te escribe en la barra lateral, y no ve ninguna terminal: tu respuesta se lee en voz alta " +
@@ -113,16 +126,14 @@ public sealed class Cerebro
         ".\\scripts\\buscar.ps1; para leer Word, Excel o PowerPoint, .\\scripts\\leer.ps1; para PDF, la herramienta Read. " +
         "Nunca escribas tu propio código para abrir o convertir archivos. " +
         "No puedes mostrar diálogos de permiso: si una acción necesita permiso, inténtala igual y la app le pedirá la autorización " +
-        "al usuario (por voz, o por escrito si es borrar, enviar o compartir). Tus reglas de confirmación siguen vigentes.";
+        "al usuario (por voz, o por escrito si es borrar, enviar o compartir). Si una acción quedó esperando ese permiso, " +
+        "no digas que falló: di en una frase qué vas a hacer y que necesitas su confirmación. Tus reglas de confirmación siguen vigentes.";
 
-    public async Task<Resultado> Preguntar(string texto, IEnumerable<string>? permitir, Action<string> estado)
+    /// <summary>Lo que hace que el proceso abierto deba reiniciarse si cambia (modelo o nombre del asistente).</summary>
+    static string Firma() => Config.Modelo + "|" + Config.Asistente;
+
+    ProcessStartInfo Arranque(string claude, bool persistente, IEnumerable<string>? extra)
     {
-        Cancelar();
-        var mia = ++corrida;
-        var claude = RutaClaude();
-        if (claude == null) return new Resultado { Texto = "No encuentro Claude Code instalado en este computador.", Error = true };
-        if ((DateTime.Now - ultimaVez).TotalMinutes > 15) sesion = null;
-
         var psi = new ProcessStartInfo(claude)
         {
             WorkingDirectory = Config.Carpeta,
@@ -130,78 +141,219 @@ public sealed class Cerebro
             UseShellExecute = false, CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var a in new[] { "-p", "--output-format", "stream-json", "--verbose", "--model", Config.Modelo,
-                                  "--append-system-prompt", Indicacion(), "--add-dir", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) })
-            psi.ArgumentList.Add(a);
-        if (sesion != null) { psi.ArgumentList.Add("--resume"); psi.ArgumentList.Add(sesion); }
-        psi.ArgumentList.Add("--disallowedTools");
-        psi.ArgumentList.Add("mcp__claude-in-chrome");
+        var args = new List<string> { "-p", "--output-format", "stream-json", "--verbose", "--model", Config.Modelo,
+            "--settings", AjustesSinHooks(), "--append-system-prompt", Indicacion(),
+            "--add-dir", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
+        if (persistente) args.AddRange(new[] { "--input-format", "stream-json" });
+        if (sesion != null) args.AddRange(new[] { "--resume", sesion });
+        args.AddRange(new[] { "--disallowedTools", "mcp__claude-in-chrome" });
         var reglas = PermisosDelProyecto();
-        if (permitir != null) reglas.AddRange(permitir);
-        if (reglas.Count > 0) { psi.ArgumentList.Add("--allowedTools"); foreach (var r in reglas) psi.ArgumentList.Add(r); }
+        if (extra != null) reglas.AddRange(extra);
+        if (reglas.Count > 0) { args.Add("--allowedTools"); args.AddRange(reglas); }
+        foreach (var a in args) psi.ArgumentList.Add(a);
         psi.Environment["PATCH_APP"] = "1";
+        return psi;
+    }
 
-        Process p;
-        try { p = Process.Start(psi)!; }
-        catch (Exception ex) { return new Resultado { Texto = "No pude arrancar Claude Code: " + ex.Message, Error = true }; }
-        proceso = p;
-        ultimaVez = DateTime.Now;
-        Registro.Log($"Orden ({Config.Modelo}): «{texto}»" + (permitir != null ? $" con permiso para {string.Join(", ", permitir)}" : ""));
+    /// <summary>Abre el proceso de Claude por adelantado (al arrancar la app), para que la primera orden no espere.</summary>
+    public void Precalentar() => Task.Run(() => { lock (candado) AsegurarVivo(); });
 
-        using (var w = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false))) await w.WriteAsync(texto);
-        var errores = p.StandardError.ReadToEndAsync();
-        string? resultado = null, sesionNueva = null;
-        bool esError = false;
-        var denegados = new List<Denegado>();
-        estado("Pensando…");
-
-        string? linea;
-        while ((linea = await p.StandardOutput.ReadLineAsync()) != null)
+    /// <summary>Debe llamarse con el candado tomado.</summary>
+    Process? AsegurarVivo()
+    {
+        if ((DateTime.Now - ultimaVez).TotalMinutes > 15 && sesion != null && turno == null)
         {
-            if (mia != corrida) break;
-            JsonElement o;
-            try { o = JsonDocument.Parse(linea).RootElement; } catch { continue; }
-            switch (o.TryGetProperty("type", out var t) ? t.GetString() : null)
+            // Tras 15 minutos sin hablar, se empieza una conversación nueva.
+            sesion = null;
+            Matar();
+        }
+        if (vivo is { HasExited: false } && firmaVivo == Firma()) return vivo;
+        Matar();
+        var claude = RutaClaude();
+        if (claude == null) return null;
+        try
+        {
+            var p = Process.Start(Arranque(claude, true, null))!;
+            var gen = ++generacion;
+            vivo = p;
+            firmaVivo = Firma();
+            p.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Registro.Log("claude: " + e.Data); };
+            p.BeginErrorReadLine();
+            _ = Task.Run(() => Leer(p, gen));
+            Registro.Log($"Claude abierto y esperando ({Config.Modelo}{(sesion != null ? ", continúa la conversación" : "")})");
+            return p;
+        }
+        catch (Exception ex) { Registro.Log("No pude arrancar Claude Code: " + ex.Message); return null; }
+    }
+
+    void Matar()
+    {
+        var p = vivo;
+        vivo = null;
+        generacion++;
+        try { if (p is { HasExited: false }) p.Kill(true); } catch { }
+    }
+
+    /// <summary>Lee la salida del proceso abierto y la reparte al turno en curso.</summary>
+    async Task Leer(Process p, int gen)
+    {
+        try
+        {
+            string? linea;
+            while ((linea = await p.StandardOutput.ReadLineAsync()) != null)
             {
-                case "system":
-                    if (o.TryGetProperty("session_id", out var s)) sesionNueva = s.GetString();
-                    break;
-                case "assistant":
-                    if (o.TryGetProperty("message", out var m) && m.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Array)
-                        foreach (var b in c.EnumerateArray())
-                            if (b.TryGetProperty("type", out var bt) && bt.GetString() == "tool_use")
-                            {
-                                var e = EstadoPara(b.GetProperty("name").GetString() ?? "", b.TryGetProperty("input", out var inp) ? inp : default);
-                                if (e != null) estado(e);
-                            }
-                    break;
-                case "result":
-                    resultado = o.TryGetProperty("result", out var r) ? r.GetString() : null;
-                    esError = o.TryGetProperty("is_error", out var ie) && ie.GetBoolean();
-                    if (o.TryGetProperty("session_id", out var s2)) sesionNueva = s2.GetString();
-                    if (o.TryGetProperty("permission_denials", out var pd) && pd.ValueKind == JsonValueKind.Array)
-                        foreach (var d in pd.EnumerateArray())
-                            denegados.Add(new Denegado
-                            {
-                                Herramienta = d.TryGetProperty("tool_name", out var tn) ? tn.GetString() ?? "" : "",
-                                Entrada = d.TryGetProperty("tool_input", out var ti) ? ti.Clone() : default,
-                            });
-                    break;
+                if (gen != generacion) return;
+                Procesar(linea);
             }
         }
-        if (mia != corrida) return new Resultado { Texto = "", Error = true };
-        await p.WaitForExitAsync();
-        proceso = null;
-        if (sesionNueva != null) sesion = sesionNueva;
-        ultimaVez = DateTime.Now;
-        if (resultado == null)
+        catch (Exception ex) { Registro.Log("Lectura de Claude: " + ex.Message); }
+        // El proceso terminó (o lo cerraron). Si había un turno esperando, se le avisa.
+        lock (candado)
         {
-            var err = await errores;
-            Registro.Log($"Claude Code terminó sin respuesta (código {p.ExitCode}): {err[..Math.Min(500, err.Length)]}");
-            return new Resultado { Texto = "Tuve un problema hablando con Claude. Revisa que tu sesión de Claude Code siga abierta.", Error = true };
+            if (gen != generacion) return;
+            vivo = null;
+            var t = turno;
+            turno = null;
+            t?.Fin.TrySetResult(new Resultado { Texto = "Tuve un problema hablando con Claude. Revisa que tu sesión de Claude Code siga abierta.", Error = true });
         }
-        Registro.Log($"Respuesta ({denegados.Count} permisos pendientes): {resultado[..Math.Min(200, resultado.Length)]}");
-        return new Resultado { Texto = resultado, Denegados = denegados, Error = esError };
+        Registro.Log($"El proceso de Claude terminó (código {(p.HasExited ? p.ExitCode : -1)})");
+    }
+
+    void Procesar(string linea)
+    {
+        JsonElement o;
+        try { o = JsonDocument.Parse(linea).RootElement; } catch { return; }
+        var t = turno;
+        switch (o.TryGetProperty("type", out var tipo) ? tipo.GetString() : null)
+        {
+            case "system":
+                if (o.TryGetProperty("session_id", out var s)) sesion = s.GetString();
+                break;
+            case "assistant":
+                if (t == null) break;
+                if (o.TryGetProperty("message", out var m) && m.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Array)
+                    foreach (var b in c.EnumerateArray())
+                        if (b.TryGetProperty("type", out var bt) && bt.GetString() == "tool_use")
+                        {
+                            var e = EstadoPara(b.GetProperty("name").GetString() ?? "", b.TryGetProperty("input", out var inp) ? inp : default);
+                            if (e != null) t.Estado(e);
+                        }
+                break;
+            case "result":
+                if (o.TryGetProperty("session_id", out var s2)) sesion = s2.GetString();
+                ultimaVez = DateTime.Now;
+                if (t == null) break;
+                var denegados = new List<Denegado>();
+                if (o.TryGetProperty("permission_denials", out var pd) && pd.ValueKind == JsonValueKind.Array)
+                    foreach (var d in pd.EnumerateArray())
+                        denegados.Add(new Denegado
+                        {
+                            Herramienta = d.TryGetProperty("tool_name", out var tn) ? tn.GetString() ?? "" : "",
+                            Entrada = d.TryGetProperty("tool_input", out var ti) ? ti.Clone() : default,
+                        });
+                var texto = o.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() ?? "" : "";
+                var error = o.TryGetProperty("is_error", out var ie) && ie.ValueKind == JsonValueKind.True;
+                lock (candado) { if (turno == t) turno = null; }
+                Registro.Log($"Respuesta ({denegados.Count} permisos pendientes): {texto[..Math.Min(200, texto.Length)]}");
+                t.Fin.TrySetResult(new Resultado { Texto = texto, Denegados = denegados, Error = error });
+                break;
+        }
+    }
+
+    public async Task<Resultado> Preguntar(string texto, IEnumerable<string>? permitir, Action<string> estado)
+    {
+        Cancelar();
+        if (RutaClaude() == null) return new Resultado { Texto = "No encuentro Claude Code instalado en este computador.", Error = true };
+        Registro.Log($"Orden ({Config.Modelo}): «{texto}»" + (permitir != null ? $" con permiso para {string.Join(", ", permitir)}" : ""));
+        estado("Pensando…");
+        if (permitir != null) return await PreguntarConPermiso(texto, permitir.ToList(), estado);
+
+        var t = new Turno { Estado = estado };
+        Process? p;
+        lock (candado)
+        {
+            p = AsegurarVivo();
+            if (p == null) return new Resultado { Texto = "No pude arrancar Claude Code.", Error = true };
+            turno = t;
+        }
+        var mensaje = JsonSerializer.Serialize(new { type = "user", message = new { role = "user", content = texto } });
+        try
+        {
+            await p.StandardInput.BaseStream.WriteAsync(new UTF8Encoding(false).GetBytes(mensaje + "\n"));
+            await p.StandardInput.BaseStream.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            lock (candado) { if (turno == t) turno = null; Matar(); }
+            Registro.Log("No pude mandarle la orden a Claude: " + ex.Message);
+            return new Resultado { Texto = "Tuve un problema hablando con Claude. Inténtalo otra vez.", Error = true };
+        }
+        ultimaVez = DateTime.Now;
+        return await t.Fin.Task;
+    }
+
+    /// <summary>Acción ya confirmada: proceso aparte con ese permiso exacto, que continúa la misma conversación.</summary>
+    async Task<Resultado> PreguntarConPermiso(string texto, List<string> permitir, Action<string> estado)
+    {
+        var t = new Turno { Estado = estado };
+        Process p;
+        int gen;
+        lock (candado)
+        {
+            Matar(); // el proceso abierto se rehace después, con la conversación al día
+            p = Process.Start(Arranque(RutaClaude()!, false, permitir))!;
+            gen = generacion;
+            turno = t;
+        }
+        p.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Registro.Log("claude: " + e.Data); };
+        p.BeginErrorReadLine();
+        using (var w = new StreamWriter(p.StandardInput.BaseStream, new UTF8Encoding(false))) await w.WriteAsync(texto);
+        _ = Task.Run(async () =>
+        {
+            string? linea;
+            while ((linea = await p.StandardOutput.ReadLineAsync()) != null) { if (gen != generacion) return; Procesar(linea); }
+            lock (candado)
+            {
+                if (turno == t) { turno = null; t.Fin.TrySetResult(new Resultado { Texto = "Tuve un problema hablando con Claude.", Error = true }); }
+            }
+        });
+        var r = await t.Fin.Task;
+        Precalentar();
+        return r;
+    }
+
+    public void Cancelar()
+    {
+        Turno? t;
+        lock (candado)
+        {
+            t = turno;
+            if (t == null) return;
+            turno = null;
+            Matar(); // la única forma segura de cortar un turno a mitad
+        }
+        t.Fin.TrySetResult(new Resultado { Texto = "", Error = true });
+        Registro.Log("Consulta cancelada");
+        Precalentar();
+    }
+
+    public void NuevaConversacion()
+    {
+        lock (candado) { sesion = null; turno?.Fin.TrySetResult(new Resultado { Error = true }); turno = null; Matar(); }
+        Registro.Log("Conversación nueva");
+        Precalentar();
+    }
+
+    /// <summary>Cambió el modelo o el nombre: se rehace el proceso abierto (conserva la conversación).</summary>
+    public void Reconfigurar()
+    {
+        lock (candado) { if (turno == null) Matar(); }
+        Precalentar();
+    }
+
+    public void Cerrar()
+    {
+        lock (candado) { turno = null; Matar(); }
     }
 
     public static string NombreAmigable(string h)
