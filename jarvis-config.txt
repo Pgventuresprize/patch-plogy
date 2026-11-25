@@ -1,2 +1,0 @@
-voz=on
-max_caracteres=600

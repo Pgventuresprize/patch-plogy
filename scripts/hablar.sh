@@ -1,16 +1,16 @@
 #!/bin/bash
-# Jarvis habla: recibe por stdin el JSON que Claude Code / Codex envían al terminar
+# PATCH habla: recibe por stdin el JSON que Claude Code / Codex envían al terminar
 # una respuesta (campo last_assistant_message) y lo lee en voz alta.
 # Nunca bloquea al agente: la voz corre en segundo plano y el script sale con 0.
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG="$DIR/../jarvis-config.txt"
-TMP="${TMPDIR:-/tmp}/jarvis-ultima-respuesta.json"
+CONFIG="$DIR/../patch-config.txt"
+TMP="${TMPDIR:-/tmp}/patch-ultima-respuesta.json"
 
 cat > "$TMP"
 
 # La app de la barra de menú habla por su cuenta: aquí no se repite
-if [ -n "$JARVIS_APP" ]; then exit 0; fi
+if [ -n "$PATCH_APP" ]; then exit 0; fi
 
 # Voz apagada -> no hacer nada
 if [ -f "$CONFIG" ] && grep -q '^voz=off' "$CONFIG"; then exit 0; fi

@@ -1,4 +1,4 @@
-// Jarvis habla en Mac (JavaScript for Automation, viene con macOS: no hay que instalar nada).
+// PATCH habla en Mac (JavaScript for Automation, viene con macOS: no hay que instalar nada).
 // Uso: osascript -l JavaScript hablar-mac.js <ruta-json> [max_caracteres]
 ObjC.import('Foundation');
 

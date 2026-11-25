@@ -24,6 +24,13 @@ final class Oido {
 
     func arrancarMotor() throws {
         let entrada = motor.inputNode
+        // Procesamiento de voz de Apple: cancela lo que suena por los parlantes (la voz de PATCH, música, videos),
+        // suprime ruido y ajusta el volumen. Así se le puede hablar sin tener el Mac en silencio, e interrumpirlo.
+        let conEco = ConfigPatch.valor("cancelar_eco") != "off"
+        if entrada.isVoiceProcessingEnabled != conEco {
+            do { try entrada.setVoiceProcessingEnabled(conEco) }
+            catch { Registro.log("No pude \(conEco ? "activar" : "quitar") la cancelación de eco: \(error)") }
+        }
         let formato = entrada.outputFormat(forBus: 0)
         detector.frecuencia = Float(formato.sampleRate)
         entrada.removeTap(onBus: 0)

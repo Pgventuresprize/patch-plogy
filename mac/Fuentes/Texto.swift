@@ -24,28 +24,74 @@ enum Texto {
         return prev[b.count]
     }
 
-    /// "yarvis", "jarbis", "jervis"… cuentan como "jarvis".
+    /// Pequeñas diferencias de transcripción ("pach", "patc"…) cuentan como el nombre.
     static func parecido(_ palabra: String, _ nombre: String) -> Bool {
         let tolerancia = nombre.count <= 4 ? 0 : (nombre.count <= 7 ? 1 : 2)
         return distancia(palabra, nombre) <= tolerancia
     }
 
-    /// Texto que viene después de la última mención del nombre, o nil si no lo nombraron.
-    static func despuesDelNombre(_ texto: String, nombre: String) -> String? {
+    /// Texto que viene después de la última mención del nombre (o de un alias aprendido en la calibración), o nil.
+    static func despuesDelNombre(_ texto: String, nombre: String, alias: [String] = Ajustes.alias) -> String? {
         let partes = normalizar(nombre)
         let objetivo = partes.joined()
         guard !objetivo.isEmpty else { return nil }
         let k = max(1, partes.count)
         let palabras = texto.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
-        guard palabras.count >= k else { return nil }
+        guard palabras.count >= 1 else { return nil }
+        let aliasNorm = Set(alias.map { normalizar($0).joined() }.filter { !$0.isEmpty })
         var ultimo: Int?
-        for i in 0...(palabras.count - k) {
-            let grupo = palabras[i..<(i + k)].map { normalizar($0).joined() }.joined()
-            if grupo.count >= 3 && parecido(grupo, objetivo) { ultimo = i + k }
+        for i in 0..<palabras.count {
+            let una = normalizar(palabras[i]).joined()
+            if aliasNorm.contains(una) { ultimo = i + 1 }
+            if i + k <= palabras.count {
+                let grupo = palabras[i..<(i + k)].map { normalizar($0).joined() }.joined()
+                if grupo.count >= 3 && parecido(grupo, objetivo) { ultimo = i + k }
+            }
         }
         guard let u = ultimo else { return nil }
         let resto = palabras[u...].joined(separator: " ")
         return resto.trimmingCharacters(in: CharacterSet(charactersIn: " ,.:;!¡?¿-"))
+    }
+
+    static let comunes: Set<String> = ["a", "al", "de", "del", "el", "la", "las", "los", "lo", "le", "un", "una", "y", "o", "que",
+                                        "en", "es", "no", "si", "se", "me", "mi", "te", "tu", "su", "ya", "por", "para", "con",
+                                        "oye", "hola", "bien", "bueno", "va", "voy", "ver", "pues"]
+
+    /// De lo que oyó en la calibración, saca alias útiles (la primera palabra que no sea un saludo).
+    static func calibrar(_ intentos: [String]) -> (alias: [String], aviso: String?) {
+        var alias: [String] = []
+        var aviso: String?
+        for t in intentos {
+            guard let p = normalizar(t).first(where: { !["oye", "hey", "ey", "hola", "ok"].contains($0) }) else { continue }
+            if comunes.contains(p) {
+                aviso = "Te oí «\(p)», que es una palabra muy común. Prueba un nombre más distinto, de dos o tres sílabas."
+                continue
+            }
+            if !alias.contains(p) { alias.append(p) }
+        }
+        return (alias, aviso)
+    }
+
+    static let palabrasDeDescanso: Set<String> = ["silencio", "callate", "calla", "callese", "callado", "descansa", "descansar",
+                                                  "descanso", "duermete", "dormir", "duerme", "detente", "basta", "stop",
+                                                  "suficiente", "shh", "shhh"]
+    static let frasesDeDescanso = ["deja de escuchar", "deja de hablar", "no escuches", "no me escuches", "dejame en paz",
+                                   "apagate", "no hables"]
+
+    /// "Silencio", "descansa", "cállate", "deja de escuchar"… La app lo resuelve sola: se calla y deja de escuchar.
+    /// Solo en frases cortas, para no confundir "busca el informe de silencio administrativo" con una orden de parar.
+    static func esOrdenDeDescanso(_ s: String) -> Bool {
+        let p = normalizar(s)
+        guard !p.isEmpty, p.count <= 6 else { return false }
+        let junto = " " + p.joined(separator: " ") + " "
+        return p.contains(where: { palabrasDeDescanso.contains($0) }) || frasesDeDescanso.contains(where: { junto.contains(" \($0) ") })
+    }
+
+    /// Mientras PATCH habla, una palabra de parada cuenta solo si no está en lo que él mismo dice.
+    static func esParadaMientrasHabla(_ oido: String, _ loQueDice: String) -> Bool {
+        guard esOrdenDeDescanso(oido) else { return false }
+        let propias = Set(normalizar(loQueDice))
+        return normalizar(oido).contains(where: { palabrasDeDescanso.contains($0) && !propias.contains($0) })
     }
 
     static func esNegativo(_ s: String) -> Bool {

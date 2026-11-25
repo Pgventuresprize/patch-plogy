@@ -1,0 +1,11 @@
+asistente=Patch
+usuario=
+voz=on
+max_caracteres=600
+voz_edge=es-CO-GonzaloNeural
+modelo=sonnet
+microfono=on
+escuchar_nombre=on
+alias=
+cancelar_eco=on
+volumen_automatico=on

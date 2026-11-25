@@ -1,26 +1,44 @@
 #!/bin/bash
-# Instalador de Jarvis para Mac — Plogy Academy
+# Instalador de PATCH para Mac — Plogy Academy
 # Uso: abre Terminal en esta carpeta y ejecuta:  bash instalar.sh
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
+CONFIG="$DIR/patch-config.txt"
+
+valor() { grep "^$1=" "$CONFIG" 2>/dev/null | head -1 | cut -d= -f2-; }
+poner() {
+  if grep -q "^$1=" "$CONFIG"; then
+    V=$(printf '%s' "$2" | sed 's/[\/&]/\\&/g')
+    sed -i '' "s/^$1=.*/$1=$V/" "$CONFIG"
+  else
+    printf '%s=%s\n' "$1" "$2" >> "$CONFIG"
+  fi
+}
 
 echo ""
 echo "  ============================================"
-echo "     JARVIS · Plogy Academy · Instalador Mac"
+echo "     PATCH · Plogy Academy · Instalador Mac"
 echo "  ============================================"
 echo ""
 
-# 1. Nombre del usuario
-if grep -q '{{NOMBRE}}' AGENTS.md; then
-  read -r -p "  ¿Cómo quieres que Jarvis te llame? " NOMBRE
-  NOMBRE=${NOMBRE:-jefe}
-  NOMBRE_SED=$(printf '%s' "$NOMBRE" | sed 's/[\/&]/\\&/g')
-  sed -i '' "s/{{NOMBRE}}/$NOMBRE_SED/g" AGENTS.md
-  echo "  ✓ Jarvis te llamará: $NOMBRE"
-else
-  echo "  ✓ Nombre ya configurado"
+# 1. Configuración (patch-config.txt no se sube a git: es de cada persona)
+if [ ! -f "$CONFIG" ]; then
+  cp patch-config.ejemplo.txt "$CONFIG"
+  if [ -f jarvis-config.txt ]; then
+    for k in voz max_caracteres voz_edge; do
+      v=$(grep "^$k=" jarvis-config.txt | cut -d= -f2-); [ -n "$v" ] && poner "$k" "$v"
+    done
+  fi
 fi
+ACTUAL=$(valor asistente); ACTUAL=${ACTUAL:-Patch}
+read -r -p "  ¿Cómo quieres llamar a tu asistente? (Enter = $ACTUAL) " ASISTENTE
+poner asistente "${ASISTENTE:-$ACTUAL}"
+YO=$(valor usuario)
+read -r -p "  ¿Y cómo te llama a ti? (Enter = ${YO:-jefe}) " USUARIO
+[ -n "$USUARIO" ] && poner usuario "$USUARIO"
+NOMBRE=$(valor asistente)
+echo "  ✓ Tu asistente se llama $NOMBRE (lo cambias cuando quieras en la app o en patch-config.txt)"
 
 # 2. Permisos de los scripts
 chmod +x scripts/*.sh
@@ -39,20 +57,20 @@ C_SED=$(printf '%s' "$C" | sed 's/[\/&]/\\&/g')
 sed -e "s/{{CMD_HABLAR}}/$H_SED/" -e "s/{{CMD_CALLAR}}/$C_SED/" .codex/hooks.plantilla.json > .codex/hooks.json
 echo "  ✓ Voz configurada para Codex"
 
-# 5. Atajos: escribir 'jarvis' o 'jarvis-codex' en cualquier Terminal
+# 5. Comandos: 'patchai' o 'patchai-codex' en cualquier Terminal (no 'patch': ese ya es un programa del Mac)
 PERFIL="$HOME/.zshrc"
-MARCA="# >>> jarvis plogy >>>"
+MARCA="# >>> patch plogy >>>"
 if ! grep -q "$MARCA" "$PERFIL" 2>/dev/null; then
   {
     echo ""
     echo "$MARCA"
-    echo "alias jarvis='cd \"$DIR\" && claude'"
-    echo "alias jarvis-codex='cd \"$DIR\" && codex'"
-    echo "# <<< jarvis plogy <<<"
+    echo "alias patchai='cd \"$DIR\" && claude'"
+    echo "alias patchai-codex='cd \"$DIR\" && codex'"
+    echo "# <<< patch plogy <<<"
   } >> "$PERFIL"
-  echo "  ✓ Atajos 'jarvis' y 'jarvis-codex' creados"
+  echo "  ✓ Comandos 'patchai' y 'patchai-codex' creados"
 else
-  echo "  ✓ Atajos ya existían"
+  echo "  ✓ Comandos ya existían"
 fi
 
 # 6. ¿Están instalados Claude Code y Codex?
@@ -63,15 +81,25 @@ if command -v claude >/dev/null; then echo "  ✓ Claude Code instalado"; else
 if command -v codex >/dev/null; then echo "  ✓ Codex instalado"; else
   echo "  · Codex no está instalado (opcional)."; fi
 
-# 7. Prueba de voz
+# 7. App de la barra de menú (se activa con el nombre del asistente)
+echo ""
+read -r -p "  ¿Instalo la app de PATCH en la barra de menú? (S/n) " APP
+if [ "${APP:-s}" != "n" ] && [ "${APP:-s}" != "N" ]; then
+  if command -v swiftc >/dev/null; then bash mac/construir.sh
+  else echo "  · Falta swiftc: instala las herramientas con  xcode-select --install  y repite."; fi
+fi
+
+# 8. Prueba de voz
 echo ""
 echo "  🔊 Probando la voz..."
-printf '{"last_assistant_message":"Hola. Soy Jarvis, tu asistente. La instalación quedó lista."}' | bash scripts/hablar.sh
+printf '{"last_assistant_message":"Hola. Soy %s, tu asistente. La instalación quedó lista."}' "$NOMBRE" | bash scripts/hablar.sh
 sleep 4
 
 echo ""
 echo "  ¡Listo! Ahora:"
 echo "   1. Cierra esta ventana de Terminal y abre una nueva."
-echo "   2. Escribe:  jarvis"
-echo "   3. Dentro, escribe:  /voice tap   (luego toca ESPACIO para hablar y otra vez para enviar)"
+echo "   2. Escribe:  patchai"
+echo "   3. La primera vez, acepta que confías en la carpeta (sin eso no aplica sus permisos)."
+echo "   4. Dentro, escribe:  /voice tap   (luego toca ESPACIO para hablar y otra vez para enviar)"
+echo "   O usa la app: di «$NOMBRE» y tu pedido."
 echo ""

@@ -10,8 +10,17 @@ notas/*
 registros/*
 !registros/.gitkeep
 .claude/settings.local.json
+patch-config.txt
 .env
 *.env
 
 # Sistema
 .DS_Store
+
+# Voz natural de Windows (la instala instalar.ps1)
+scripts/voz/node_modules/
+
+# Compilación de la app de Windows
+windows/PATCH/bin/
+windows/PATCH/obj/
+windows/publicado/

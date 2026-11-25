@@ -1,0 +1,52 @@
+# Compila la app de PATCH para Windows en una máquina Windows de GitHub.
+# - En cada cambio de windows/, ui/ o la voz: verifica que compila y deja el .zip como artefacto.
+# - Al crear una etiqueta v* (por ejemplo v2.0.0): publica el .zip en el release, para que instalar.ps1 lo baje
+#   y los estudiantes no necesiten el SDK de .NET.
+name: Compilar app de Windows
+
+on:
+  push:
+    # Con "tags" y sin "branches", GitHub ignora los push a ramas: hay que nombrar ambas.
+    branches:
+      - "**"
+    paths:
+      - "windows/**"
+      - "ui/**"
+      - "scripts/voz/**"
+      - ".github/workflows/windows.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Compilar (autocontenida)
+        shell: pwsh
+        run: ./windows/publicar.ps1
+      - name: Empaquetar
+        shell: pwsh
+        run: Compress-Archive -Path windows/publicado/* -DestinationPath PATCH-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PATCH-windows-x64
+          path: PATCH-windows-x64.zip
+      - name: Publicar en el release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $etiqueta = "${{ github.ref_name }}"
+          gh release view $etiqueta 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $etiqueta --title "PATCH $etiqueta" --notes "App de voz de PATCH para Windows (autocontenida). La instala instalar.ps1." }
+          gh release upload $etiqueta PATCH-windows-x64.zip --clobber
