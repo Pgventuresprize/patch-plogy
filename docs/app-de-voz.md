@@ -17,18 +17,27 @@ Para quien siga desarrollando PATCH. Explica cómo está armada la app, cómo se
    hizo una pregunta, si espera un permiso o si la barra está abierta (7 a 10 s). En Windows, además, una frase sin el
    nombre se descarta si Vosk la oyó con seguridad baja (< 0,62): así la conversación de fondo no se le manda como
    orden (pasó en la primera prueba real).
-4. **Descanso:** "silencio", "descansa", "cállate", "duérmete", "deja de escuchar"… los resuelve la app sin Claude:
+4. **Mientras trabaja sigue escuchando** y no corta la tarea. Lo que se le diga se **suma a la tarea en curso**:
+   la app escribe ese mensaje en el mismo proceso de Claude Code, que lo lee en la siguiente pausa entre
+   herramientas y entrega una sola respuesta que atiende las dos cosas (probado: «dime la hora» + a mitad de un
+   comando «y dime BANANA» → una respuesta con ambas). Cuenta lo dicho con el nombre ("Patch, y también…"), tras
+   el atajo, escrito en la barra, o sin el nombre si llega hasta 8 s después de dar la orden (una pausa a mitad de
+   frase ya no corta el pedido). "Cancela", "olvídalo", "para" o "espera" dejan la tarea; "silencio" lo pone a
+   descansar. Si la tarea corre en un proceso aparte (una acción ya autorizada), lo dicho se manda al terminar.
+   Si Claude termina justo cuando se le suma algo, contesta eso como un turno aparte ("respuesta suelta") y la
+   app lo muestra igual. Un "sí, y también…" a un permiso aprueba y además le pasa a Claude lo que vino con el sí.
+5. **Descanso:** "silencio", "descansa", "cállate", "duérmete", "deja de escuchar"… los resuelve la app sin Claude:
    corta la voz, cancela lo que hacía y cierra el micrófono. Se despierta con el atajo (que además queda escuchando)
    o con el botón de micrófono. **Mientras habla sigue oyendo**: una palabra de parada que no esté en lo que él mismo
    dice lo interrumpe.
-5. **Cancelación de eco:** en Windows, el micrófono pasa por el *Voice Capture DSP* de Windows (`Eco.cs`): resta lo que
+6. **Cancelación de eco:** en Windows, el micrófono pasa por el *Voice Capture DSP* de Windows (`Eco.cs`): resta lo que
    suena por los parlantes, suprime ruido y sube la voz (control automático de volumen). Necesita una salida de audio
    activa (si no, se detiene con 0x87CC000A), así que reproduce silencio mientras escucha. Si falla, se usa el
    micrófono normal. En Mac se usa el procesamiento de voz de `AVAudioEngine`. Ambas cosas se apagan en Ajustes.
-6. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
+7. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
    borde derecho y las demás ventanas se reacomodan. En Mac flota encima, porque macOS no tiene forma oficial de
    reservar un borde.
-7. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
+8. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
    **Borrar, enviar y compartir exigen escribir BORRAR, ENVIAR o COMPARTIR.** Solo se autoriza ese comando exacto y una
    sola vez. Borrar siempre manda a la papelera (`scripts/papelera.*`).
    Un permiso normal aprobado con "sí" queda aprobado hasta cerrar la app (comandos exactos; nunca Write/Edit sin
@@ -89,6 +98,10 @@ nombre. Con voces reales todavía no se ha medido.
 PATCH.exe --probar-audio "C:\ruta\frase1.wav;C:\ruta\frase2.wav"
 ```
 "Oye" los WAV (16 kHz, mono) en vez del micrófono, a velocidad real, y espera a que termine cada respuesta.
+Con `!frase.wav` la dice mientras PATCH habla, con `~frase.wav` mientras trabaja, y con `=texto` manda una orden escrita
+(para probar lo que viene después sin depender de que el oído reconozca el nombre). Conviene usar una copia del
+proyecto con `voz=off` (`--carpeta`), para que no hable en voz alta; luego hay que volver a abrir la app instalada
+con la carpeta real, porque `--carpeta` queda guardada.
 Para manejar la barra desde una prueba: abrir la app con `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`
 y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (por ejemplo, `Puente.enviar({...})`).
 `PATCH.exe --salir` cierra la copia abierta de forma ordenada y devuelve el borde de la pantalla.

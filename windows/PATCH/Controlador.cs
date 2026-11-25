@@ -41,6 +41,14 @@ public sealed class Controlador
     List<string> alias = new();
     readonly List<object> historial = new();
     List<string>? calibracion;
+    // Mientras trabaja sigue escuchando: lo que se le diga se suma a la tarea en curso, sin cortarla.
+    bool oyendoEnTarea;         // lo llamaron (o se pulsó el atajo) mientras trabajaba: la próxima frase se suma
+    bool nombreEnTarea;         // esa frase empezó por el nombre
+    DateTime ordenEnviada = DateTime.MinValue;
+    string ultimoDicho = "";    // lo último que se le mandó (para no sumar dos veces la misma frase)
+    string porSumar = "";       // lo que no se pudo sumar en vivo: va con la siguiente consulta
+    /// <summary>Segundos después de dar una orden en los que se puede seguir hablando sin repetir el nombre.</summary>
+    const double VentanaContinuacion = 8;
 
     static readonly string[] Voces =
     {
@@ -68,6 +76,12 @@ public sealed class Controlador
         oido.Nivel += n => ui.BeginInvoke(() => AlNivel(n));
         oido.Problema += t => ui.BeginInvoke(() => Avisar(t));
 
+        cerebro.Suelta += r => ui.BeginInvoke(() =>
+        {
+            // Contestó aparte algo que se le sumó justo al terminar. Si ya está en otra cosa, solo queda escrito.
+            if (fase is Fase.Reposo or Fase.Seguimiento) Respuesta(r);
+            else if (!string.IsNullOrWhiteSpace(r.Texto)) AgregarMensaje("asistente", r.Texto);
+        });
         reloj.Tick += (_, _) => Tic();
         reloj.Start();
         VigilarConfig();
@@ -103,29 +117,44 @@ public sealed class Controlador
                 var archivos = Environment.GetCommandLineArgs()[prueba + 1].Split(';', StringSplitOptions.RemoveEmptyEntries);
                 _ = Task.Run(async () =>
                 {
+                  try
+                  {
                     await Task.Delay(3000);
                     for (int k = 0; k < archivos.Length; k++)
                     {
                         var a0 = archivos[k];
-                        var siguienteMientrasHabla = k + 1 < archivos.Length && archivos[k + 1].StartsWith("!");
-                        // "!archivo.wav" se inyecta MIENTRAS habla (para probar que se le puede interrumpir).
-                        var mientrasHabla = a0.StartsWith("!");
-                        var a = a0.TrimStart('!');
-                        if (mientrasHabla)
+                        if (a0.StartsWith("="))
                         {
-                            for (int i = 0; i < 200 && !await ui.InvokeAsync(() => fase == Fase.Hablando); i++) await Task.Delay(300);
-                            await Task.Delay(1500);
+                            // "=texto": una orden escrita (para probar solo lo que viene después, sin depender del oído).
+                            Registro.Log("Prueba: escribo " + a0[1..]);
+                            await ui.InvokeAsync(() => Enviar(a0[1..]));
+                            await Task.Delay(500);
+                            continue;
                         }
-                        Registro.Log("Prueba: inyecto " + Path.GetFileName(a) + (mientrasHabla ? " (mientras habla)" : ""));
+                        var siguienteMientrasHabla = k + 1 < archivos.Length && archivos[k + 1][0] is '!' or '~';
+                        // "!archivo.wav" se inyecta MIENTRAS habla (para probar que se le puede interrumpir) y
+                        // "~archivo.wav" MIENTRAS trabaja (para probar que se le puede sumar algo a la tarea).
+                        var mientrasHabla = a0.StartsWith("!");
+                        var mientrasPiensa = a0.StartsWith("~");
+                        var a = a0.TrimStart('!', '~');
+                        if (mientrasHabla || mientrasPiensa)
+                        {
+                            var esperada = mientrasHabla ? Fase.Hablando : Fase.Pensando;
+                            for (int i = 0; i < 200 && !await ui.InvokeAsync(() => fase == esperada); i++) await Task.Delay(300);
+                            await Task.Delay(mientrasHabla ? 1500 : 300);
+                        }
+                        Registro.Log("Prueba: inyecto " + Path.GetFileName(a) + (mientrasHabla ? " (mientras habla)" : mientrasPiensa ? " (mientras trabaja)" : ""));
                         await oido.Inyectar(a);
                         // Espera a que termine de pensar y hablar antes de la siguiente frase
-                        // (salvo que la siguiente sea para decirla mientras habla).
-                        await Task.Delay(1500);
+                        // (salvo que la siguiente sea para decirla mientras habla o trabaja).
+                        await Task.Delay(mientrasPiensa ? 300 : 1500);
                         if (siguienteMientrasHabla) continue;
                         while (await ui.InvokeAsync(() => fase is Fase.Pensando or Fase.Hablando)) await Task.Delay(300);
                         await Task.Delay(1000);
                     }
                     Registro.Log("Prueba: terminé");
+                  }
+                  catch (Exception ex) { Registro.Log("Prueba: falló: " + ex.Message); }
                 });
                 return;
             }
@@ -194,13 +223,22 @@ public sealed class Controlador
                     Activar(true, r);
                 }
                 break;
-            case Fase.Reposo:
             case Fase.Pensando:
+            {
+                // Trabajando: no se corta la tarea. Si lo llaman, muestra lo que oye; la frase completa se suma (AlFinal).
+                var conNombre = Config.EscucharNombre ? Texto.DespuesDelNombre(t, Config.Asistente, alias) : null;
+                if (conNombre != null && !oyendoEnTarea) { Registro.Log($"Me llamaron mientras trabajaba: «{t}»"); EscucharEnTarea(true); }
+                if (!oyendoEnTarea) return;
+                if (conNombre != null) nombreEnTarea = true;
+                orden = nombreEnTarea ? (conNombre ?? orden) : t;
+                MostrarEscuchaEnTarea();
+                break;
+            }
+            case Fase.Reposo:
                 if (!Config.EscucharNombre) return;
                 var resto = Texto.DespuesDelNombre(t, Config.Asistente, alias);
                 if (resto == null) return;
                 Registro.Log($"Me llamaron: «{t}»");
-                if (fase == Fase.Pensando) cerebro.Cancelar();
                 Activar(true, resto);
                 break;
             case Fase.Escuchando:
@@ -228,13 +266,14 @@ public sealed class Controlador
             case Fase.Hablando:
                 if (Texto.EsParadaMientrasHabla(t, loQueDice)) { Registro.Log($"Interrumpido: «{t}»"); Descansar(); }
                 break;
-            case Fase.Reposo:
             case Fase.Pensando:
+                FraseMientrasTrabaja(t, frase);
+                break;
+            case Fase.Reposo:
                 if (!Config.EscucharNombre) return;
                 var resto = Texto.DespuesDelNombre(t, Config.Asistente, alias);
                 if (resto == null) return;
                 Registro.Log($"Me llamaron: «{t}»");
-                if (fase == Fase.Pensando) cerebro.Cancelar();
                 if (resto.Length > 0) { orden = resto; Enviar(); }
                 else { Activar(false, ""); }
                 break;
@@ -278,8 +317,103 @@ public sealed class Controlador
         return ok;
     }
 
+    // ------------------------------------------------------------------ Hablarle mientras trabaja
+
+    /// <summary>
+    /// Una frase completa mientras Claude trabaja. "Silencio" lo pone a descansar y "cancela" deja la tarea.
+    /// Lo demás se suma a la tarea en curso (sin cortarla) si lo llamaron por el nombre, si se pulsó el atajo o si
+    /// sigue hablando justo después de dar la orden (la pausa a mitad de frase no debe cortar el pedido).
+    /// </summary>
+    void FraseMientrasTrabaja(string t, Oido.Frase? frase)
+    {
+        var conNombre = Config.EscucharNombre ? Texto.DespuesDelNombre(t, Config.Asistente, alias) : null;
+        var texto = (conNombre ?? (oyendoEnTarea && nombreEnTarea ? orden : t)).Trim();
+        var llamado = conNombre != null || oyendoEnTarea;
+        if (Texto.EsOrdenDeDescanso(texto)) { Registro.Log($"Orden de descanso mientras trabajaba: «{t}»"); Descansar(); return; }
+        if (Texto.EsCancelacion(texto) && (llamado || DirigidaAMi(frase, texto))) { CancelarTarea(); return; }
+        if (!llamado)
+        {
+            if ((DateTime.Now - ordenEnviada).TotalSeconds > VentanaContinuacion) return; // conversación de fondo: no es para PATCH
+            if (QuitarYaEnviado(texto) is not { Length: > 0 } nuevo || !DirigidaAMi(frase, nuevo)) return;
+            texto = nuevo;
+        }
+        else if (QuitarYaEnviado(texto) is { } nuevo) texto = nuevo;
+        else texto = "";
+        if (texto.Length == 0)
+        {
+            if (conNombre != null) { EscucharEnTarea(false); return; } // dijo solo el nombre: la frase que sigue se suma
+            oyendoEnTarea = false; orden = ""; MostrarPensando(); return;
+        }
+        SumarATarea(texto);
+    }
+
+    void EscucharEnTarea(bool conNombre)
+    {
+        oyendoEnTarea = true;
+        nombreEnTarea = conNombre;
+        orden = "";
+        inicioEscucha = ultimoCambio = DateTime.Now;
+        if (!conNombre) oido.Reiniciar();
+        MostrarEscuchaEnTarea();
+    }
+
+    void MostrarEscuchaEnTarea()
+    {
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "escuchando", titulo = "Te escucho (sigo trabajando)…", texto = orden });
+        else pildora.Mostrar(Fase.Escuchando, "Te escucho, sigo trabajando…", orden);
+    }
+
+    void MostrarPensando(string titulo = "Sigo trabajando…", string texto = "")
+    {
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo, texto = "" });
+        else pildora.Mostrar(Fase.Pensando, titulo, texto);
+    }
+
+    /// <summary>Suma lo dicho a la tarea en curso: Claude Code lo lee en la siguiente pausa entre herramientas.</summary>
+    void SumarATarea(string texto)
+    {
+        oyendoEnTarea = false;
+        nombreEnTarea = false;
+        orden = "";
+        texto = texto.Trim().Trim(',', '.', ' ');
+        if (texto.Length == 0) { MostrarPensando(); return; }
+        Registro.Log($"Sumado a la tarea en curso: «{texto}»");
+        AgregarMensaje("usuario", texto);
+        ultimoDicho = (ultimoDicho + " " + texto).Trim();
+        ordenEnviada = DateTime.Now;
+        var mensaje = $"(Te lo dije mientras trabajabas; puede completar o corregir lo anterior.) {texto}";
+        if (!cerebro.Agregar(mensaje)) porSumar = (porSumar + " " + texto).Trim();
+        MostrarPensando("Lo sumo a lo que estoy haciendo", texto);
+    }
+
+    void CancelarTarea()
+    {
+        Registro.Log("Tarea cancelada por voz");
+        oyendoEnTarea = false;
+        porSumar = "";
+        cerebro.Cancelar();
+        AgregarMensaje("asistente", "Listo, lo dejé.");
+        Decir("Listo, lo dejé.");
+    }
+
+    /// <summary>
+    /// El reconocedor puede entregar otra vez una frase que ya se mandó (o la misma, alargada): se queda solo con lo nuevo.
+    /// Devuelve null si no hay nada nuevo.
+    /// </summary>
+    string? QuitarYaEnviado(string texto)
+    {
+        var dicho = string.Join(" ", Texto.Palabras(ultimoDicho));
+        var p = Texto.Palabras(texto);
+        var nuevo = string.Join(" ", p);
+        if (dicho.Length == 0 || nuevo.Length == 0) return texto;
+        if (nuevo == dicho || dicho.EndsWith(" " + nuevo)) return null;
+        if (nuevo.StartsWith(dicho + " ")) return string.Join(" ", p.Skip(Texto.Palabras(ultimoDicho).Length));
+        return texto;
+    }
+
     void Activar(bool conNombre, string resto)
     {
+        oyendoEnTarea = false;
         if (!microfonoListo) { barra.Mostrar(); return; }
         boca.Callar();
         oido.Pausar(false);
@@ -316,6 +450,11 @@ public sealed class Controlador
                 var espera = pendientes.Count > 0 ? 20 : barra.Abierta ? 10 : 7;
                 if (palabraPendiente == null && (ahora - inicioEscucha).TotalSeconds > espera) VolverAReposo();
                 break;
+            case Fase.Pensando when oyendoEnTarea:
+                // Lo llamaron mientras trabajaba: si deja de hablar, se suma lo oído; si no dice nada, vuelve a "trabajando".
+                if (orden.Trim().Length > 0 && (ahora - ultimoCambio).TotalSeconds > 2.5) SumarATarea(orden);
+                else if (orden.Trim().Length == 0 && (ahora - inicioEscucha).TotalSeconds > 8) { oyendoEnTarea = false; MostrarPensando(); }
+                break;
         }
     }
 
@@ -325,6 +464,7 @@ public sealed class Controlador
         orden = "";
         nombreEnEstaFrase = false;
         desdeSeguimiento = false;
+        oyendoEnTarea = false;
         // Los permisos pendientes NO se olvidan aquí: se puede responder después escribiendo "sí" en la barra.
         oido.Pausar(false);
         oido.Reiniciar();
@@ -347,7 +487,15 @@ public sealed class Controlador
         {
             var p = pendientes;
             if (Texto.EsNegativo(texto)) { pendientes = new(); Consultar("No te autorizo eso. No lo hagas.", null, texto); return; }
-            if (Texto.EsAfirmativo(texto)) { pendientes = new(); cerebro.Recordar(p); Consultar("Autorizado. Hazlo ahora.", p.Select(d => d.Regla).ToList(), texto); return; }
+            if (Texto.EsAfirmativo(texto))
+            {
+                pendientes = new();
+                cerebro.Recordar(p);
+                // "Sí, y también dime…": lo que venga con el sí no se pierde.
+                var extra = Texto.Palabras(texto).Length > 3 ? $" Además me dijo: «{texto}»" : "";
+                Consultar("Autorizado. Hazlo ahora." + extra, p.Select(d => d.Regla).ToList(), texto);
+                return;
+            }
             pendientes = new();
         }
         if (palabraPendiente != null)
@@ -360,27 +508,54 @@ public sealed class Controlador
         Consultar(texto, null, texto);
     }
 
-    async void Consultar(string texto, List<string>? permitir, string mostrando)
+    async void Consultar(string texto, List<string>? permitir, string? mostrando)
     {
         fase = Fase.Pensando;
+        oyendoEnTarea = false;
         boca.Callar();
         oido.Pausar(false);
-        AgregarMensaje("usuario", mostrando);
+        if (mostrando != null)
+        {
+            AgregarMensaje("usuario", mostrando);
+            ultimoDicho = mostrando;
+            ordenEnviada = DateTime.Now; // unos segundos para seguir hablando sin repetir el nombre
+        }
+        if (porSumar.Length > 0) { texto += $"\n\n(Además, mientras trabajabas te dije: {porSumar})"; porSumar = ""; }
         if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo = "Pensando…", texto = "" });
-        else pildora.Mostrar(Fase.Pensando, "Pensando…", mostrando);
+        else pildora.Mostrar(Fase.Pensando, "Pensando…", mostrando ?? "");
 
         var r = await cerebro.Preguntar(texto, permitir, e => ui.BeginInvoke(() =>
         {
-            if (fase != Fase.Pensando) return;
+            if (fase != Fase.Pensando || oyendoEnTarea) return;
             if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo = e, texto = "" });
             else pildora.PonerTitulo(e);
         }));
         if (fase != Fase.Pensando) return; // la cancelaron
+        if (oyendoEnTarea && r.Denegados.Count == 0 && orden.Trim().Length > 0)
+        {
+            // Terminó mientras le hablaban: la respuesta queda escrita y lo que está diciendo sigue como orden nueva.
+            if (!string.IsNullOrWhiteSpace(r.Texto)) AgregarMensaje("asistente", r.Texto);
+            oyendoEnTarea = false;
+            fase = Fase.Escuchando;
+            nombreEnEstaFrase = nombreEnTarea;
+            desdeSeguimiento = false;
+            inicioEscucha = ultimoCambio = DateTime.Now;
+            MostrarEscucha();
+            return;
+        }
+        if (porSumar.Length > 0 && r.Denegados.Count == 0 && !r.Error)
+        {
+            // Lo que se dijo mientras trabajaba en un proceso aparte (acción ya autorizada) se manda ahora.
+            if (!string.IsNullOrWhiteSpace(r.Texto)) AgregarMensaje("asistente", r.Texto);
+            Consultar("Sigue con esto.", null, null);
+            return;
+        }
         Respuesta(r);
     }
 
     void Respuesta(Resultado r)
     {
+        oyendoEnTarea = false;
         if (r.Denegados.Count > 0)
         {
             pendientes = r.Denegados;
@@ -480,6 +655,8 @@ public sealed class Controlador
         if (palabraPendiente != null) CancelarConfirmacion();
         pendientes = new();
         orden = "";
+        oyendoEnTarea = false;
+        porSumar = "";
         fase = Fase.Reposo;
         if (microfonoListo) { oido.Detener(); microfonoListo = false; }
         Config.Poner("microfono", "off");
@@ -527,7 +704,12 @@ public sealed class Controlador
             case Fase.Permiso: Activar(false, ""); break;
             case Fase.Escuchando: if (orden.Trim().Length == 0) VolverAReposo(); else Enviar(); break;
             case Fase.Hablando: boca.Callar(); turnoVoz++; Activar(false, ""); break;
-            case Fase.Pensando: cerebro.Cancelar(); Activar(false, ""); break;
+            case Fase.Pensando:
+                // Trabajando: el atajo no corta la tarea; abre el oído para sumarle algo (y otra vez lo manda).
+                if (!oyendoEnTarea) EscucharEnTarea(false);
+                else if (orden.Trim().Length > 0) SumarATarea(orden);
+                else { oyendoEnTarea = false; MostrarPensando(); }
+                break;
         }
     }
 
@@ -579,9 +761,17 @@ public sealed class Controlador
                 barra.Enviar(new { tipo = "historial", mensajes = historial });
                 break;
             case "enviar":
+                if (fase == Fase.Pensando)
+                {
+                    // Escribió mientras trabajaba: se suma a la tarea, salvo que sea para pararla.
+                    var tx = S("texto");
+                    if (Texto.EsCancelacion(tx)) CancelarTarea();
+                    else if (Texto.EsOrdenDeDescanso(tx)) Descansar();
+                    else SumarATarea(tx);
+                    break;
+                }
                 boca.Callar();
                 turnoVoz++;
-                if (fase == Fase.Pensando) cerebro.Cancelar();
                 fase = Fase.Reposo;
                 Enviar(S("texto"));
                 break;

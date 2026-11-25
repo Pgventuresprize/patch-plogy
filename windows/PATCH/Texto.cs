@@ -145,6 +145,20 @@ public static class Texto
         return Palabras(oido).Any(w => (PalabrasDeDescanso.Contains(w)) && !propias.Contains(w));
     }
 
+    static readonly HashSet<string> PalabrasDeCancelar = new()
+    {
+        "cancela", "cancelalo", "cancelala", "cancelar", "olvidalo", "olvidala", "olvida", "aborta", "abortar",
+    };
+
+    /// <summary>"Cancela", "olvídalo", "para", "espera"…: deja la tarea en curso (sin cerrar el micrófono). Solo frases cortas.</summary>
+    public static bool EsCancelacion(string s)
+    {
+        var p = Palabras(s);
+        if (p.Length == 0 || p.Length > 4) return false;
+        if (p.Any(PalabrasDeCancelar.Contains)) return true;
+        return string.Join(" ", p) is "para" or "para ya" or "ya para" or "para para" or "espera" or "no espera" or "espera espera";
+    }
+
     public static bool EsNegativo(string s)
     {
         var p = Palabras(s).ToHashSet();
