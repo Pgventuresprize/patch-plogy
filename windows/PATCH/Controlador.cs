@@ -35,6 +35,7 @@ public sealed class Controlador
     const double SeguridadMinima = 0.62;
     DateTime inicioEscucha = DateTime.Now, ultimoCambio = DateTime.Now, ultimoNivelBarra = DateTime.MinValue;
     List<Denegado> pendientes = new();
+    DateTime pendientesDesde = DateTime.MinValue;
     string? palabraPendiente;
     int turnoVoz;
     List<string> alias = new();
@@ -324,7 +325,7 @@ public sealed class Controlador
         orden = "";
         nombreEnEstaFrase = false;
         desdeSeguimiento = false;
-        if (palabraPendiente == null) pendientes = new();
+        // Los permisos pendientes NO se olvidan aquí: se puede responder después escribiendo "sí" en la barra.
         oido.Pausar(false);
         oido.Reiniciar();
         pildora.OcultarEn(ocultarEn);
@@ -340,11 +341,13 @@ public sealed class Controlador
         if (texto.Length == 0) return;
         // "Silencio", "descansa", "deja de escuchar"… se resuelve aquí mismo, sin Claude.
         if (palabraPendiente == null && Texto.EsOrdenDeDescanso(texto)) { Registro.Log($"Orden de descanso: «{texto}»"); Descansar(); return; }
+        // Un permiso sin responder sigue vigente 5 minutos (aunque se haya cerrado la ventanita): un "sí" lo aprueba.
+        if (pendientes.Count > 0 && palabraPendiente == null && (DateTime.Now - pendientesDesde).TotalMinutes > 5) pendientes = new();
         if (pendientes.Count > 0 && palabraPendiente == null)
         {
             var p = pendientes;
             if (Texto.EsNegativo(texto)) { pendientes = new(); Consultar("No te autorizo eso. No lo hagas.", null, texto); return; }
-            if (Texto.EsAfirmativo(texto)) { pendientes = new(); Consultar("Autorizado. Hazlo ahora.", p.Select(d => d.Regla).ToList(), texto); return; }
+            if (Texto.EsAfirmativo(texto)) { pendientes = new(); cerebro.Recordar(p); Consultar("Autorizado. Hazlo ahora.", p.Select(d => d.Regla).ToList(), texto); return; }
             pendientes = new();
         }
         if (palabraPendiente != null)
@@ -381,6 +384,7 @@ public sealed class Controlador
         if (r.Denegados.Count > 0)
         {
             pendientes = r.Denegados;
+            pendientesDesde = DateTime.Now;
             var que = string.Join(", ", r.Denegados.Select(d => d.Descripcion).Distinct());
             var tipo = r.Denegados.Select(d => d.Tipo).Max();
             Registro.Log($"Pide permiso ({tipo}): {string.Join(" | ", r.Denegados.Select(d => d.Regla))}");
@@ -402,6 +406,7 @@ public sealed class Controlador
                 return;
             }
             fase = Fase.Permiso;
+            inicioEscucha = DateTime.Now; // la ventana para decir "sí" empieza ahora, no cuando se dio la orden
             if (barra.Abierta) barra.Enviar(new { tipo = "permiso", descripcion = Mayuscula(que), detalle = string.Join("\n", r.Denegados.Select(d => d.Detalle)) });
             else pildora.Mostrar(Fase.Permiso, "Necesito tu permiso", Mayuscula(que), siNo: true);
             Decir($"Para eso necesito tu permiso: {que}. ¿Lo autorizo?");

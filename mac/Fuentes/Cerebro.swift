@@ -155,6 +155,17 @@ final class Cerebro {
         ultimaVez = Date()
     }
 
+    /// Permisos que el usuario ya aprobó con un "sí" mientras la app está abierta: no se vuelven a pedir.
+    private var aprobados: [String] = []
+
+    /// Recuerda un permiso aprobado para el resto de la sesión. Solo comandos exactos y herramientas concretas:
+    /// nunca "Write"/"Edit" sin ruta (sería escribir en cualquier parte), ni borrar, enviar o compartir.
+    func recordar(_ ds: [Denegado]) {
+        for d in ds where d.tipo == .normal && !["Write", "Edit", "MultiEdit", "NotebookEdit"].contains(d.herramienta) {
+            if !aprobados.contains(d.regla) { aprobados.append(d.regla) }
+        }
+    }
+
     /// Acción ya confirmada: proceso aparte con ese permiso exacto, que continúa la misma conversación.
     private func preguntarConPermiso(_ texto: String, _ permitir: [String]) {
         matar() // el proceso abierto se rehace después, con la conversación al día
@@ -194,7 +205,7 @@ final class Cerebro {
         if let s = sesion { args += ["--resume", s] }
         // Sin pantalla, Claude Code ignora los permisos del proyecto si la carpeta no fue marcada como confiable:
         // se le pasan explícitamente, más los que el usuario acaba de autorizar.
-        let reglas = Cerebro.permisosDelProyecto() + extra
+        let reglas = Cerebro.permisosDelProyecto() + aprobados + extra
         if !reglas.isEmpty { args += ["--allowedTools"] + reglas }
 
         let c = Corrida()
@@ -295,8 +306,12 @@ final class Cerebro {
     en voz alta y se muestra en una ventanita pequeña. Trabajas en segundo plano: nunca uses el mouse, el teclado \
     ni el navegador del usuario. Abre algo en pantalla solo si el resultado es para verlo. \
     Cada permiso que pidas interrumpe al usuario: usa solo comandos ya aprobados y simples. Para buscar archivos usa \
-    bash scripts/buscar.sh; para leer Word, Excel o PowerPoint, bash scripts/leer.sh; para PDF, la herramienta Read. \
-    Nunca escribas tu propio código para abrir o convertir archivos. \
+    bash scripts/buscar.sh; para leer Word, Excel o PowerPoint, bash scripts/leer.sh; para PDF, la herramienta Read; \
+    para ordenar o mover varios archivos, bash scripts/organizar.sh (primero con --vista). \
+    Usa comandos sueltos o encadenados con | de los ya aprobados, sin $(...), sin ; y sin bucles: eso siempre pide permiso. \
+    La carpeta del usuario es \(NSHomeDirectory()). \
+    Nunca escribas tu propio código o script para abrir, convertir o mover archivos, ni para saltarte un permiso, \
+    y nunca le pidas al usuario que corra comandos a mano. \
     No puedes mostrar diálogos de permiso: si una acción necesita permiso, inténtala igual y la app le pedirá \
     la autorización al usuario (por voz, o por escrito si es borrar, enviar o compartir). Si una acción quedó esperando \
     ese permiso, no digas que falló: di en una frase qué vas a hacer y que necesitas su confirmación. \

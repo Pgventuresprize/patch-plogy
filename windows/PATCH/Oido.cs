@@ -86,15 +86,12 @@ public sealed class Oido : IDisposable
         try { nombre = WaveInEvent.GetCapabilities(0).ProductName; } catch { }
 
         // 1) Con cancelación de eco (resta lo que suena por los parlantes). 2) Si Windows no puede, micrófono normal.
+        reintentosEco = 0;
         if (Config.Valor("cancelar_eco", "on") != "off")
         {
             try
             {
-                var c = new CapturaConEco();
-                c.Datos += (b, n) => Procesar(b, n);
-                c.Fallo += m => { Registro.Log("La cancelación de eco se detuvo: " + m); CambiarANormal(); };
-                c.Iniciar();
-                eco = c;
+                eco = AbrirEco();
                 Registro.Log($"Micrófono abierto con cancelación de eco: {nombre}");
                 return;
             }
@@ -102,6 +99,42 @@ public sealed class Oido : IDisposable
         }
         AbrirNormal();
         Registro.Log($"Micrófono abierto: {nombre}");
+    }
+
+    CapturaConEco AbrirEco()
+    {
+        var c = new CapturaConEco();
+        c.Datos += (b, n) => Procesar(b, n);
+        c.Fallo += m => { Registro.Log("La cancelación de eco se detuvo: " + m); CambiarANormal(); };
+        c.Iniciar();
+        return c;
+    }
+
+    // Si la cancelación de eco se cae (por ejemplo, al suspender el PC o cambiar los parlantes), se sigue con el
+    // micrófono normal y se reintenta a los 30 s. Sin esto quedaría oyéndose a sí mismo hasta reiniciar la app.
+    int reintentosEco;
+
+    void VolverAEco()
+    {
+        if (detenido || eco != null || Config.Valor("cancelar_eco", "on") == "off") return;
+        try
+        {
+            var c = AbrirEco();
+            lock (candado)
+            {
+                if (detenido) { c.Detener(); return; } // cerraron el micrófono mientras tanto
+                if (entrada != null)
+                {
+                    entrada.RecordingStopped -= AlDetenerse; // es un cambio a propósito, no una desconexión
+                    try { entrada.StopRecording(); } catch { }
+                    entrada.Dispose();
+                    entrada = null;
+                }
+            }
+            eco = c;
+            Registro.Log("Cancelación de eco recuperada");
+        }
+        catch (Exception ex) { Registro.Log("La cancelación de eco sigue sin funcionar (sigo con el micrófono normal): " + ex.Message); }
     }
 
     void AbrirNormal()
@@ -119,7 +152,16 @@ public sealed class Oido : IDisposable
     {
         var e = eco;
         eco = null;
-        Task.Run(() => { try { e?.Detener(); } catch { } if (!detenido) try { AbrirNormal(); } catch (Exception ex) { Problema?.Invoke("No pude abrir el micrófono: " + ex.Message); } });
+        Task.Run(async () =>
+        {
+            try { e?.Detener(); } catch { }
+            if (detenido) return;
+            try { AbrirNormal(); Registro.Log("Sigo con el micrófono normal"); }
+            catch (Exception ex) { Problema?.Invoke("No pude abrir el micrófono: " + ex.Message); return; }
+            if (++reintentosEco > 5) return; // si se cae una y otra vez, se queda con el normal
+            await Task.Delay(30_000);
+            VolverAEco();
+        });
     }
 
     /// <summary>Modo de prueba: reconocimiento listo pero sin abrir el micrófono; el audio llega por Inyectar.</summary>

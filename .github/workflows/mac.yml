@@ -7,6 +7,7 @@ on:
     paths:
       - "mac/**"
       - "ui/**"
+      - "scripts/**"
       - ".github/workflows/mac.yml"
   workflow_dispatch:
 
@@ -43,3 +44,20 @@ jobs:
           test -e "$HOME/.Trash/borrame.txt" && test ! -e "$HOME/PATCH-Pruebas/borrame.txt" && echo "papelera.sh ok"
           test -e /etc/hosts && echo "proteccion ok"
           bash scripts/buscar.sh "Quality" documento 0 5 || true
+      - name: Probar organizar.sh (vista, ordenar sin sobrescribir, patrón, deshacer, protección)
+        run: |
+          set -e
+          D="$HOME/PATCH-Orden"; mkdir -p "$D/PDF"
+          for n in "foto a.png" "foto b.png" "contrato [v2].pdf" "notas.docx" "raro.xyz" "Screenshot 1.png" "bajando.crdownload"; do echo x > "$D/$n"; done
+          echo viejo > "$D/PDF/contrato [v2].pdf"
+          bash scripts/organizar.sh --carpeta "$D" --vista
+          test -e "$D/foto a.png" && echo "vista no mueve ok"
+          bash scripts/organizar.sh --carpeta "$D"
+          test -e "$D/Imagenes/foto a.png" && test -e "$D/Capturas/Screenshot 1.png" && test -e "$D/Otros/raro.xyz"
+          test -e "$D/PDF/contrato [v2] (2).pdf" && grep -q viejo "$D/PDF/contrato [v2].pdf" && echo "no sobrescribe ok"
+          test -e "$D/bajando.crdownload" && echo "ignora descargas a medias ok"
+          bash scripts/organizar.sh --deshacer ultimo
+          test -e "$D/foto a.png" && test -e "$D/contrato [v2].pdf" && echo "deshacer ok"
+          bash scripts/organizar.sh --carpeta "$D" --patron "*contrato*" --destino Contratos
+          test -e "$D/Contratos/contrato [v2].pdf" && echo "patron ok"
+          bash scripts/organizar.sh --carpeta "$HOME/Library" --vista | grep -q protegida && echo "proteccion ok"

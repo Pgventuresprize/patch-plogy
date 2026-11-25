@@ -76,6 +76,24 @@ public sealed class Cerebro
 
     public bool Ocupado => turno != null;
 
+    // Permisos que el usuario ya aprobó con un "sí" mientras la app está abierta: no se vuelven a pedir.
+    readonly List<string> aprobados = new();
+
+    /// <summary>
+    /// Recuerda un permiso aprobado para el resto de la sesión. Solo comandos exactos y herramientas concretas:
+    /// nunca "Write"/"Edit" sin ruta (sería escribir en cualquier parte), ni borrar, enviar o compartir.
+    /// </summary>
+    public void Recordar(IEnumerable<Denegado> ds)
+    {
+        lock (aprobados)
+            foreach (var d in ds)
+            {
+                if (d.Tipo != TipoPermiso.Normal) continue;
+                if (d.Herramienta is "Write" or "Edit" or "MultiEdit" or "NotebookEdit") continue;
+                if (!aprobados.Contains(d.Regla)) aprobados.Add(d.Regla);
+            }
+    }
+
     public static string? RutaClaude()
     {
         var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
@@ -123,11 +141,31 @@ public sealed class Cerebro
         "y se muestra en una ventanita pequeña, así que sé breve. Trabajas en segundo plano: nunca uses el mouse, el teclado ni el " +
         "navegador del usuario. Abre algo en pantalla solo si el resultado es para verlo. " +
         "Cada permiso que pidas interrumpe al usuario: usa solo comandos ya aprobados y simples. Para buscar archivos usa " +
-        ".\\scripts\\buscar.ps1; para leer Word, Excel o PowerPoint, .\\scripts\\leer.ps1; para PDF, la herramienta Read. " +
-        "Nunca escribas tu propio código para abrir o convertir archivos. " +
+        ".\\scripts\\buscar.ps1; para leer Word, Excel o PowerPoint, .\\scripts\\leer.ps1; para PDF, la herramienta Read; " +
+        "para ordenar o mover varios archivos, .\\scripts\\organizar.ps1 (primero con -Vista). " +
+        "En PowerShell escribe las rutas completas, nunca variables como $env:USERPROFILE o $HOME, y no uses bloques { }, " +
+        "ForEach-Object ni [Clase]::Metodo(): eso siempre pide permiso. Filtra con la forma simple (Where-Object Length -gt 50MB). " +
+        $"Rutas de este equipo: carpeta del usuario {Ruta(Environment.SpecialFolder.UserProfile)}, Escritorio {Ruta(Environment.SpecialFolder.Desktop)}, " +
+        $"Documentos {Ruta(Environment.SpecialFolder.MyDocuments)}, Descargas {Descargas()}, Imágenes {Ruta(Environment.SpecialFolder.MyPictures)}. " +
+        "Nunca escribas tu propio código o script para abrir, convertir o mover archivos, ni para saltarte un permiso, " +
+        "y nunca le pidas al usuario que corra comandos a mano. " +
         "No puedes mostrar diálogos de permiso: si una acción necesita permiso, inténtala igual y la app le pedirá la autorización " +
         "al usuario (por voz, o por escrito si es borrar, enviar o compartir). Si una acción quedó esperando ese permiso, " +
         "no digas que falló: di en una frase qué vas a hacer y que necesitas su confirmación. Tus reglas de confirmación siguen vigentes.";
+
+    static string Ruta(Environment.SpecialFolder c) => Environment.GetFolderPath(c);
+
+    /// <summary>La carpeta de Descargas real (puede estar movida); .NET no la trae como SpecialFolder.</summary>
+    static string Descargas()
+    {
+        try
+        {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders");
+            if (k?.GetValue("{374DE290-123F-4565-9164-39C4925E467B}") is string s) return Environment.ExpandEnvironmentVariables(s);
+        }
+        catch { }
+        return Path.Combine(Ruta(Environment.SpecialFolder.UserProfile), "Downloads");
+    }
 
     /// <summary>Lo que hace que el proceso abierto deba reiniciarse si cambia (modelo o nombre del asistente).</summary>
     static string Firma() => Config.Modelo + "|" + Config.Asistente;
@@ -148,6 +186,7 @@ public sealed class Cerebro
         if (sesion != null) args.AddRange(new[] { "--resume", sesion });
         args.AddRange(new[] { "--disallowedTools", "mcp__claude-in-chrome" });
         var reglas = PermisosDelProyecto();
+        lock (aprobados) reglas.AddRange(aprobados);
         if (extra != null) reglas.AddRange(extra);
         if (reglas.Count > 0) { args.Add("--allowedTools"); args.AddRange(reglas); }
         foreach (var a in args) psi.ArgumentList.Add(a);

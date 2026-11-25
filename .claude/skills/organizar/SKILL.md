@@ -5,33 +5,39 @@ description: Ordena, mueve o renombra archivos en una carpeta del computador (De
 
 # Organizar archivos
 
-## 1. Qué y dónde
-Identifica la carpeta (en Windows, la real: `[Environment]::GetFolderPath('Desktop')`, `'MyDocuments'`; Descargas es `~\Downloads`)
-y el criterio: por tipo (como `ordenar-escritorio`), por fecha (Año/Mes), por cliente o proyecto (por el nombre del archivo, o leyéndolo si hace falta),
-o una orden concreta ("mueve el contrato de Eira a la carpeta Clientes").
+Todo se hace con el script `organizar`, que ya está aprobado (no interrumpe al usuario con permisos), no borra,
+no sobrescribe y deja un registro para deshacer. **No escribas tu propio script ni armes comandos con bloques `{ }`,
+`$variables` o `ForEach-Object`: siempre piden permiso.**
 
-## 2. Mirar
-Lista el contenido del primer nivel con un comando simple (`Get-ChildItem "ruta" -File` o `ls`). No entres a subcarpetas salvo que lo pida.
-Para encontrar un archivo concreto, usa la habilidad `buscar-documentos`.
+- Windows: `.\scripts\organizar.ps1 -Carpeta <carpeta> [opciones]`
+- Mac: `bash scripts/organizar.sh --carpeta <carpeta> [opciones]`
 
-## 3. Proponer
-Di el plan en una o dos frases: cuántos archivos, a qué carpetas. Si son más de 3 archivos, **espera el sí**.
-Si es uno solo y lo pidió explícitamente, hazlo directo.
+`<carpeta>` puede ser `Descargas`, `Escritorio`, `Documentos`, `Imagenes`, `Videos`, `Musica` (el script encuentra la
+ruta real, también dentro de OneDrive) o una ruta completa entre comillas.
 
-## 4. Ejecutar
-- Crea solo las carpetas que hagan falta (`New-Item -ItemType Directory "ruta"` / `mkdir`).
-- Mueve sin sobrescribir nunca: Windows `Move-Item "origen" "destino"` SIN `-Force`; Mac `mv -n`.
-  Si el destino ya existe, agrega " (2)" al nombre.
-- Un archivo por comando: así no te pide permiso a cada rato.
-- Guarda el registro para deshacer en `registros/organizar-AAAA-MM-DD-HHMM.txt`, una línea por archivo: `origen -> destino`.
-- **Drive:** para mover usa `update_file` con `parentId` (antes revisa `canMoveItemWithinDrive`); para renombrar, `title`.
-  Registra igual `id: carpeta-anterior -> carpeta-nueva`. Crea carpetas con `create_file` y mimeType de carpeta.
+| Qué pide | Windows | Mac |
+|---|---|---|
+| Ver el plan sin mover | `-Vista` | `--vista` |
+| Por tipo (Imagenes, PDF, Documentos…) | (por defecto) | (por defecto) |
+| Por mes (2026-11, 2026-10…) | `-Por mes` | `--por mes` |
+| Mover los que coinciden a una carpeta | `-Patron "*contrato*" -Destino Contratos` | `--patron "*contrato*" --destino Contratos` |
+| Deshacer lo último | `-Deshacer ultimo` | `--deshacer ultimo` |
 
-## 5. Cerrar
-Di en una frase qué hiciste y ofrece deshacer. Abre la carpeta solo si la ordenaste completa (`Start-Process "ruta"` / `open`).
+## Pasos
+1. **Mirar y proponer:** corre el script con `-Vista`. Di el plan en una frase ("Son 950 archivos: 278 imágenes,
+   133 PDF…; los pongo en carpetas por tipo dentro de Descargas, ¿listo?"). Si son más de 3 archivos, **espera el sí**.
+2. **Hacer:** con el sí, corre el mismo comando sin `-Vista`. Una sola llamada, aunque sean miles de archivos.
+3. **Cerrar:** di en una frase qué hiciste y que se puede deshacer. Abre la carpeta solo si la ordenaste completa
+   (`Start-Process "ruta"` / `open "ruta"`).
 
-## Deshacer
-Lee el registro más reciente de `registros/` y mueve cada archivo de vuelta, en orden inverso. Luego dilo en una frase.
+## Casos que el script no cubre
+- **Agrupar por cliente o proyecto** (cuando el nombre del archivo no basta): decide el grupo de cada archivo y usa
+  `-Patron` por grupo (por ejemplo, `-Patron "*Eira*" -Destino "Clientes\Eira"`). Si los nombres no tienen el cliente,
+  mueve uno por uno con `Move-Item "origen" "destino"` (sin `-Force`) / `mv -n`, con rutas completas escritas.
+- **Renombrar uno:** `Rename-Item "ruta" "nombre nuevo"` / `mv -n`.
+- **Drive:** para mover usa `update_file` con `parentId` (antes revisa `canMoveItemWithinDrive`); para renombrar,
+  `title`. Crea carpetas con `create_file` y el mimeType de carpeta. Registra en `registros/` el `id: carpeta-anterior -> carpeta-nueva`.
 
 ## Nunca
-Borrar (ver la regla en AGENTS.md), tocar AppData, Library, `.ssh`, la carpeta de PATCH, ni archivos del sistema.
+Borrar (ver la regla en AGENTS.md), tocar AppData, Library, `.ssh`, la carpeta de PATCH ni archivos del sistema.
+Si un permiso te bloquea, no le pidas al usuario que corra comandos a mano: dile qué querías hacer y espera.

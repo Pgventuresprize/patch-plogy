@@ -36,10 +36,16 @@ Tus respuestas se leen EN VOZ ALTA, así que escribe como si hablaras.
 - **Abrir apps y archivos:** en Mac usa `open -a "Nombre App"` u `open ruta`.
   En Windows tu terminal es PowerShell: usa `Start-Process "ruta"` para archivos y carpetas, y para apps
   `Start-Process spotify:`, `Start-Process calc`, `Start-Process "https://..."`. Nunca uses `start ""` (eso es de CMD).
-- **En Windows, usa comandos de PowerShell simples, de una sola instrucción** (sin `;` ni cadenas largas con `|`):
-  los permisos ya aprobados solo cubren comandos sueltos, y cada comando compuesto obliga a pedir permiso.
-- **En Windows, el Escritorio y Documentos suelen estar dentro de OneDrive.** Averigua la ruta real con
-  `[Environment]::GetFolderPath('Desktop')` (o `'MyDocuments'`) antes de buscar en `~\Desktop`.
+- **Cada permiso que pides interrumpe al usuario. En Windows, escribe comandos que ya pasan solos:**
+  - Rutas completas escritas (`"C:\Users\ana\Downloads"`), nunca `$env:USERPROFILE`, `$HOME` ni otras variables.
+  - Sin bloques `{ }`, sin `ForEach-Object`, sin `$_`, sin `[Clase]::Metodo()`, sin `;` ni asignaciones: todo eso
+    pide permiso siempre, aunque cada parte esté aprobada.
+  - Sí puedes encadenar con `|` los comandos aprobados, con la forma simple de filtrar:
+    `Get-ChildItem "C:\Users\ana\Downloads" -File | Where-Object Length -gt 50MB | Select-Object Name, Length`.
+  - Para ordenar o mover muchos archivos usa `.\scripts\organizar.ps1` (habilidad `organizar`), nunca un comando propio.
+  - **Nunca escribas scripts nuevos para saltarte un permiso**, y nunca le pidas al usuario que corra comandos a mano.
+- **En Windows, el Escritorio y Documentos suelen estar dentro de OneDrive.** Las rutas reales de este equipo vienen en
+  tus instrucciones de la app; `organizar.ps1` también acepta `Escritorio`, `Documentos` o `Descargas` y las resuelve solo.
 - **Crear:** guarda notas, resúmenes e investigaciones en la carpeta `notas/` de este proyecto.
 - **Google:** Drive (buscar, leer, ordenar en carpetas, crear documentos), Gmail (buscar, leer, resumir, dejar borradores)
   y Calendar (ver y crear eventos), si las herramientas están conectadas.

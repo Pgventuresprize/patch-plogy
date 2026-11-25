@@ -25,6 +25,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ultimoCambio = Date()
     private var ultimoTexto = ""
     private var pendientes: [Denegado] = []
+    private var pendientesDesde = Date.distantPast
     private var palabraPendiente: String?
     private var erroresSeguidos = 0
     private var turnoVoz = 0
@@ -141,7 +142,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fase = .reposo
         orden = ""
         conNombre = false
-        if palabraPendiente == nil { pendientes = [] }
+        // Los permisos pendientes NO se olvidan aquí: se puede responder después escribiendo "sí" en la barra.
         ultimoTexto = ""
         escucharNombre()
         if ocultar { panel.ocultar(despues: 0.3) }
@@ -271,6 +272,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             hablar("Para eso necesito que escribas \(palabra) en la barra lateral.")
             return
         }
+        // Un permiso sin responder sigue vigente 5 minutos (aunque se haya cerrado la ventanita): un "sí" lo aprueba.
+        if !pendientes.isEmpty && Date().timeIntervalSince(pendientesDesde) > 300 { pendientes = [] }
         if !pendientes.isEmpty {
             let p = pendientes
             pendientes = []
@@ -279,6 +282,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
             if Texto.esAfirmativo(texto) {
+                cerebro.recordar(p)
                 consultar("Autorizado. Hazlo ahora.", permitir: p.map { $0.regla }, mostrando: texto)
                 return
             }
@@ -313,6 +317,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard fase == .pensando else { return }
         if !r.denegados.isEmpty {
             pendientes = r.denegados
+            pendientesDesde = Date()
             let que = r.denegados.map { $0.descripcion }.joined(separator: ", ")
             let tipo = r.denegados.map { $0.tipo }.max() ?? .normal
             let detalle = r.denegados.map { $0.detalle }.joined(separator: "\n")

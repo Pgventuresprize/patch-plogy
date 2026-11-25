@@ -31,6 +31,19 @@ Para quien siga desarrollando PATCH. Explica cómo está armada la app, cómo se
 7. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
    **Borrar, enviar y compartir exigen escribir BORRAR, ENVIAR o COMPARTIR.** Solo se autoriza ese comando exacto y una
    sola vez. Borrar siempre manda a la papelera (`scripts/papelera.*`).
+   Un permiso normal aprobado con "sí" queda aprobado hasta cerrar la app (comandos exactos; nunca Write/Edit sin
+   ruta, ni borrar, enviar o compartir). Un permiso sin responder sigue vigente 5 minutos: un "sí" escrito en la barra
+   lo aprueba aunque la ventanita ya se haya cerrado.
+
+## Menos permisos (lo que aprendimos el 2026-11-25)
+En modo sin pantalla, Claude Code **rechaza siempre** en PowerShell las variables (`$env:USERPROFILE`, `$HOME`), los
+bloques `{ }` (`ForEach-Object`, `Where-Object { … }`), `$_`, las llamadas `[Clase]::Metodo()` y las asignaciones, aunque
+cada comando esté en la lista de permitidos. Sí deja pasar tuberías `|` de comandos permitidos con rutas completas
+escritas (`Get-ChildItem "C:\Users\ana\Downloads" -File | Where-Object Length -gt 50MB | Select-Object Name`).
+Por eso: la app le da a Claude las rutas reales del equipo, las tareas grandes van en scripts aprobados
+(`scripts/organizar.*`: por tipo, por mes o por patrón, con `-Vista` y `-Deshacer ultimo`) y las instrucciones le
+prohíben escribir scripts propios o pedirle al usuario que corra comandos. Prueba: "ordena mis descargas" (950
+archivos) pasó de 6 permisos y ningún archivo movido a 0 permisos.
 
 ## Piezas
 | Pieza | Windows (`windows/PATCH`, C# .NET 10) | Mac (`mac/Fuentes`, Swift) |
