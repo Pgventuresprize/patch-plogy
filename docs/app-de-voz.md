@@ -13,13 +13,22 @@ Para quien siga desarrollando PATCH. Explica cómo está armada la app, cómo se
    "busca el contrato y dime la fecha" tardaba 26 s y ahora 8,8 s; una pregunta de seguimiento tarda 1,4 s.
    Una acción ya confirmada va en un proceso aparte con ese permiso exacto y luego se reabre el proceso continuando la
    conversación. La app quita del entorno las variables de otra sesión de Claude Code, por si la abrió un agente.
-3. La respuesta se muestra en la ventanita y se dice en voz alta. Después hay unos segundos para seguir hablando sin
-   repetir el nombre: 7 s con la barra cerrada y 10 s con la barra abierta. Son cortos a propósito, para que una
-   conversación cercana no se le mande como orden.
-4. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
+3. La respuesta se muestra en la ventanita y se dice en voz alta. Solo se sigue escuchando **sin el nombre** si PATCH
+   hizo una pregunta, si espera un permiso o si la barra está abierta (7 a 10 s). En Windows, además, una frase sin el
+   nombre se descarta si Vosk la oyó con seguridad baja (< 0,62): así la conversación de fondo no se le manda como
+   orden (pasó en la primera prueba real).
+4. **Descanso:** "silencio", "descansa", "cállate", "duérmete", "deja de escuchar"… los resuelve la app sin Claude:
+   corta la voz, cancela lo que hacía y cierra el micrófono. Se despierta con el atajo (que además queda escuchando)
+   o con el botón de micrófono. **Mientras habla sigue oyendo**: una palabra de parada que no esté en lo que él mismo
+   dice lo interrumpe.
+5. **Cancelación de eco:** en Windows, el micrófono pasa por el *Voice Capture DSP* de Windows (`Eco.cs`): resta lo que
+   suena por los parlantes, suprime ruido y sube la voz (control automático de volumen). Necesita una salida de audio
+   activa (si no, se detiene con 0x87CC000A), así que reproduce silencio mientras escucha. Si falla, se usa el
+   micrófono normal. En Mac se usa el procesamiento de voz de `AVAudioEngine`. Ambas cosas se apagan en Ajustes.
+6. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
    borde derecho y las demás ventanas se reacomodan. En Mac flota encima, porque macOS no tiene forma oficial de
    reservar un borde.
-5. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
+7. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
    **Borrar, enviar y compartir exigen escribir BORRAR, ENVIAR o COMPARTIR.** Solo se autoriza ese comando exacto y una
    sola vez. Borrar siempre manda a la papelera (`scripts/papelera.*`).
 
@@ -73,7 +82,12 @@ y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (po
 
 ## Pendiente
 - Decidir cómo reciben los estudiantes el .zip (releases públicos o entregado con la carpeta).
-- Medir la detección del nombre con voces reales y ruido de oficina.
+- Medir la detección del nombre con voces reales y ruido de oficina, y ajustar `SeguridadMinima` con lo que muestre
+  el registro ("Frase sin nombre aceptada/IGNORADA (seguridad …)").
+- Probar la cancelación de eco con sonido real (con el volumen del PC apagado no se pudo comprobar acústicamente).
+- Si las órdenes se siguen entendiendo mal: segunda pasada con Whisper como servidor residente (`whisper.cpp`).
+  Whisper "small" transcribe muy bien, pero desde la línea de comandos tarda 46 s en este procesador porque carga el
+  modelo cada vez.
 - Mac: probar en un Mac real (hoy solo está compilada y empaquetada en GitHub Actions). Reacomodar ventanas al abrir
   la barra exigiría el permiso de Accesibilidad.
 - Lo que queda de espera es el trabajo real del modelo (búsquedas, lecturas). Con Haiku es más rápido.
