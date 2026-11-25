@@ -86,6 +86,12 @@
     $("cfgVoz").hidden = !(cfg.voces && cfg.voces.length);
     $("cfgLeer").checked = !!cfg.voz;
     $("cfgEscuchar").checked = cfg.escucharNombre !== false;
+    $("cfgEco").checked = cfg.cancelarEco !== false;
+    $("cfgAgc").checked = cfg.volumenAutomatico !== false;
+    // Opciones que la app no maneja (por ejemplo, en Mac el volumen automático lo hace el sistema)
+    $("cfgEco").parentElement.hidden = cfg.cancelarEco === undefined;
+    $("cfgAgc").parentElement.hidden = cfg.volumenAutomatico === undefined;
+    document.querySelectorAll(".atajo2").forEach((e) => (e.textContent = cfg.atajo || "Ctrl+Alt+Espacio"));
     $("cfgInicio").checked = !!cfg.inicioWindows;
     $("atajo").textContent = cfg.atajo || "Ctrl+Alt+Espacio";
     $("alias").innerHTML = (cfg.alias || []).map((a) => `<span>${escapar(a)}</span>`).join("");
@@ -217,6 +223,8 @@
   $("btnProbarVoz").onclick = () => Puente.enviar({ tipo: "probarVoz" });
   $("cfgLeer").addEventListener("change", (e) => { cfg.voz = e.target.checked; aplicarConfig({}); Puente.enviar({ tipo: "voz", on: e.target.checked }); });
   $("cfgEscuchar").addEventListener("change", (e) => guardar("escuchar_nombre", e.target.checked ? "on" : "off"));
+  $("cfgEco").addEventListener("change", (e) => guardar("cancelar_eco", e.target.checked ? "on" : "off"));
+  $("cfgAgc").addEventListener("change", (e) => guardar("volumen_automatico", e.target.checked ? "on" : "off"));
   $("cfgInicio").addEventListener("change", (e) => Puente.enviar({ tipo: "inicioWindows", on: e.target.checked }));
   document.querySelectorAll("[data-abrir]").forEach((b) => (b.onclick = () => Puente.enviar({ tipo: "abrir", que: b.dataset.abrir })));
   $("btnNueva").onclick = () => { Puente.enviar({ tipo: "nuevaConversacion" }); $("ajustes").hidden = true; };

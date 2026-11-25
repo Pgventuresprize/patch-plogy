@@ -7,3 +7,5 @@ modelo=sonnet
 microfono=on
 escuchar_nombre=on
 alias=
+cancelar_eco=on
+volumen_automatico=on

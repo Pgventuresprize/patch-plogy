@@ -112,6 +112,39 @@ public static class Texto
         return (alias.Distinct().ToList(), aviso);
     }
 
+    static readonly HashSet<string> PalabrasDeDescanso = new()
+    {
+        "silencio", "callate", "calla", "callese", "callado", "descansa", "descansar", "descanso", "duermete", "dormir",
+        "duerme", "detente", "basta", "stop", "suficiente", "shh", "shhh",
+    };
+    static readonly string[] FrasesDeDescanso =
+    {
+        "deja de escuchar", "deja de hablar", "no escuches", "no me escuches", "dejame en paz", "apagate", "no hables",
+    };
+
+    /// <summary>
+    /// "Silencio", "descansa", "cállate", "deja de escuchar"… La app lo resuelve sola (sin Claude): se calla y deja de escuchar.
+    /// Solo cuenta en frases cortas, para no confundir "busca el informe de silencio administrativo" con una orden de parar.
+    /// </summary>
+    public static bool EsOrdenDeDescanso(string s)
+    {
+        var p = Palabras(s);
+        if (p.Length == 0 || p.Length > 6) return false;
+        var junto = " " + string.Join(" ", p) + " ";
+        return p.Any(PalabrasDeDescanso.Contains) || FrasesDeDescanso.Any(f => junto.Contains(" " + f + " "));
+    }
+
+    /// <summary>
+    /// Mientras PATCH habla, el micrófono también oye su voz. Una palabra de parada cuenta solo si no está en lo que él
+    /// mismo está diciendo (así no se interrumpe solo).
+    /// </summary>
+    public static bool EsParadaMientrasHabla(string oido, string loQueDice)
+    {
+        if (!EsOrdenDeDescanso(oido)) return false;
+        var propias = Palabras(loQueDice).ToHashSet();
+        return Palabras(oido).Any(w => (PalabrasDeDescanso.Contains(w)) && !propias.Contains(w));
+    }
+
     public static bool EsNegativo(string s)
     {
         var p = Palabras(s).ToHashSet();

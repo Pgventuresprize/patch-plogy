@@ -29,6 +29,10 @@ public sealed class Controlador
     bool microfonoListo;
     string orden = "";
     bool nombreEnEstaFrase;
+    bool desdeSeguimiento;      // empezó a hablar sin decir el nombre, en la ventana de seguimiento
+    string loQueDice = "";      // lo que PATCH está diciendo en voz alta (para no interrumpirse con su propia voz)
+    /// <summary>Por debajo de esta seguridad, una frase sin el nombre se descarta (suele ser conversación de fondo).</summary>
+    const double SeguridadMinima = 0.62;
     DateTime inicioEscucha = DateTime.Now, ultimoCambio = DateTime.Now, ultimoNivelBarra = DateTime.MinValue;
     List<Denegado> pendientes = new();
     string? palabraPendiente;
@@ -59,7 +63,7 @@ public sealed class Controlador
         atajo = new Nativo.Atajo(() => ui.BeginInvoke(AtajoPulsado));
 
         oido.Parcial += t => ui.BeginInvoke(() => AlParcial(t));
-        oido.Final += t => ui.BeginInvoke(() => AlFinal(t));
+        oido.Final += f => ui.BeginInvoke(() => AlFinal(f.Texto, f));
         oido.Nivel += n => ui.BeginInvoke(() => AlNivel(n));
         oido.Problema += t => ui.BeginInvoke(() => Avisar(t));
 
@@ -99,12 +103,24 @@ public sealed class Controlador
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(3000);
-                    foreach (var a in archivos)
+                    for (int k = 0; k < archivos.Length; k++)
                     {
-                        Registro.Log("Prueba: inyecto " + Path.GetFileName(a));
+                        var a0 = archivos[k];
+                        var siguienteMientrasHabla = k + 1 < archivos.Length && archivos[k + 1].StartsWith("!");
+                        // "!archivo.wav" se inyecta MIENTRAS habla (para probar que se le puede interrumpir).
+                        var mientrasHabla = a0.StartsWith("!");
+                        var a = a0.TrimStart('!');
+                        if (mientrasHabla)
+                        {
+                            for (int i = 0; i < 200 && !await ui.InvokeAsync(() => fase == Fase.Hablando); i++) await Task.Delay(300);
+                            await Task.Delay(1500);
+                        }
+                        Registro.Log("Prueba: inyecto " + Path.GetFileName(a) + (mientrasHabla ? " (mientras habla)" : ""));
                         await oido.Inyectar(a);
                         // Espera a que termine de pensar y hablar antes de la siguiente frase
+                        // (salvo que la siguiente sea para decirla mientras habla).
                         await Task.Delay(1500);
+                        if (siguienteMientrasHabla) continue;
                         while (await ui.InvokeAsync(() => fase is Fase.Pensando or Fase.Hablando)) await Task.Delay(300);
                         await Task.Delay(1000);
                     }
@@ -167,6 +183,16 @@ public sealed class Controlador
         if (calibracion != null) { barra.Enviar(new { tipo = "escuchando", texto = t }); return; }
         switch (fase)
         {
+            case Fase.Hablando:
+                // Mientras habla solo atiende "silencio", "cállate", "descansa"… (o su nombre, si hay cancelación de eco).
+                if (Texto.EsParadaMientrasHabla(t, loQueDice)) { Registro.Log($"Interrumpido: «{t}»"); Descansar(); }
+                else if (oido.ConEco && Config.EscucharNombre && Texto.DespuesDelNombre(t, Config.Asistente, alias) is { } r)
+                {
+                    Registro.Log($"Me llamaron mientras hablaba: «{t}»");
+                    boca.Callar(); turnoVoz++;
+                    Activar(true, r);
+                }
+                break;
             case Fase.Reposo:
             case Fase.Pensando:
                 if (!Config.EscucharNombre) return;
@@ -184,6 +210,7 @@ public sealed class Controlador
             case Fase.Permiso:
                 fase = Fase.Escuchando;
                 nombreEnEstaFrase = Texto.DespuesDelNombre(t, Config.Asistente, alias) != null;
+                desdeSeguimiento = !nombreEnEstaFrase;
                 orden = nombreEnEstaFrase ? Texto.DespuesDelNombre(t, Config.Asistente, alias)! : t;
                 inicioEscucha = DateTime.Now;
                 MostrarEscucha();
@@ -191,12 +218,15 @@ public sealed class Controlador
         }
     }
 
-    void AlFinal(string t)
+    void AlFinal(string t, Oido.Frase? frase = null)
     {
         ultimoCambio = DateTime.Now;
         if (calibracion != null) { PasoCalibracion(t); return; }
         switch (fase)
         {
+            case Fase.Hablando:
+                if (Texto.EsParadaMientrasHabla(t, loQueDice)) { Registro.Log($"Interrumpido: «{t}»"); Descansar(); }
+                break;
             case Fase.Reposo:
             case Fase.Pensando:
                 if (!Config.EscucharNombre) return;
@@ -209,16 +239,42 @@ public sealed class Controlador
                 break;
             case Fase.Escuchando:
                 orden = nombreEnEstaFrase ? (Texto.DespuesDelNombre(t, Config.Asistente, alias) ?? "") : t;
+                if (desdeSeguimiento && !nombreEnEstaFrase && !DirigidaAMi(frase, orden))
+                {
+                    // Habló alguien sin decir el nombre y no sonaba a una orden para PATCH: se ignora.
+                    desdeSeguimiento = false;
+                    orden = "";
+                    fase = pendientes.Count > 0 ? Fase.Permiso : Fase.Seguimiento;
+                    if (!barra.Abierta) pildora.PonerTexto("");
+                    break;
+                }
                 nombreEnEstaFrase = false;
+                desdeSeguimiento = false;
                 if (orden.Trim().Length > 0) Enviar();
                 else { inicioEscucha = DateTime.Now; MostrarEscucha(); } // dijo solo el nombre: espera la orden
                 break;
             case Fase.Seguimiento:
             case Fase.Permiso:
-                orden = Texto.DespuesDelNombre(t, Config.Asistente, alias) ?? t;
+                var conNombre = Texto.DespuesDelNombre(t, Config.Asistente, alias);
+                orden = conNombre ?? t;
+                if (conNombre == null && !DirigidaAMi(frase, orden)) { orden = ""; break; }
                 if (orden.Trim().Length > 0) Enviar();
                 break;
         }
+    }
+
+    /// <summary>
+    /// ¿Una frase dicha SIN el nombre iba para PATCH? Las órdenes de parar y los sí/no siempre cuentan;
+    /// lo demás solo si el reconocedor la oyó con seguridad (la conversación de fondo suele oírse mal).
+    /// </summary>
+    bool DirigidaAMi(Oido.Frase? f, string texto)
+    {
+        if (Texto.EsOrdenDeDescanso(texto)) return true;
+        if (pendientes.Count > 0 && (Texto.EsAfirmativo(texto) || Texto.EsNegativo(texto))) return true;
+        if (f == null) return true;
+        var ok = f.Seguridad >= SeguridadMinima;
+        Registro.Log($"Frase sin nombre {(ok ? "aceptada" : "IGNORADA")} (seguridad {f.Seguridad:0.00}, volumen {f.Volumen:0.000}): «{texto}»");
+        return ok;
     }
 
     void Activar(bool conNombre, string resto)
@@ -247,7 +303,9 @@ public sealed class Controlador
         {
             case Fase.Escuchando:
                 // Si dejó de cambiar el texto un buen rato, se envía (por si el reconocedor no cerró la frase).
-                if (orden.Trim().Length > 0 && (ahora - ultimoCambio).TotalSeconds > 2.5) Enviar();
+                // Sin el nombre (seguimiento) se espera a la frase completa, que trae la seguridad.
+                if (orden.Trim().Length > 0 && !desdeSeguimiento && (ahora - ultimoCambio).TotalSeconds > 2.5) Enviar();
+                else if (desdeSeguimiento && (ahora - ultimoCambio).TotalSeconds > 6) { desdeSeguimiento = false; VolverAReposo(); }
                 else if (orden.Trim().Length == 0 && (ahora - inicioEscucha).TotalSeconds > 8) VolverAReposo();
                 break;
             case Fase.Seguimiento:
@@ -260,15 +318,16 @@ public sealed class Controlador
         }
     }
 
-    void VolverAReposo()
+    void VolverAReposo(double ocultarEn = 0.3)
     {
         fase = Fase.Reposo;
         orden = "";
         nombreEnEstaFrase = false;
+        desdeSeguimiento = false;
         if (palabraPendiente == null) pendientes = new();
         oido.Pausar(false);
         oido.Reiniciar();
-        pildora.OcultarEn(0.3);
+        pildora.OcultarEn(ocultarEn);
         if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "reposo", titulo = microfonoListo ? $"Di «{Config.Asistente}» para hablarme" : "Micrófono bloqueado: escríbeme", texto = "" });
     }
 
@@ -279,6 +338,8 @@ public sealed class Controlador
         var texto = (escrito ?? orden).Trim().Trim(',', '.', ' ');
         orden = "";
         if (texto.Length == 0) return;
+        // "Silencio", "descansa", "deja de escuchar"… se resuelve aquí mismo, sin Claude.
+        if (palabraPendiente == null && Texto.EsOrdenDeDescanso(texto)) { Registro.Log($"Orden de descanso: «{texto}»"); Descansar(); return; }
         if (pendientes.Count > 0 && palabraPendiente == null)
         {
             var p = pendientes;
@@ -357,13 +418,22 @@ public sealed class Controlador
     {
         var mio = ++turnoVoz;
         if (fase != Fase.Permiso) fase = Fase.Hablando;
-        oido.Pausar(true); // que no se escuche a sí mismo
+        // Sigue oyendo mientras habla, pero en Hablando solo atiende órdenes de parar (ver AlParcial/AlFinal).
+        loQueDice = t;
+        oido.Reiniciar();
         void despues()
         {
             if (mio != turnoVoz) return;
-            // Medio segundo de cola para que no se oiga el final de su propia voz.
+            // Medio segundo de cola y se olvida lo oído: así no toma el final de su propia voz como orden.
             var d = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
-            d.Tick += (_, _) => { d.Stop(); if (mio != turnoVoz) return; oido.Pausar(false); if (entrarSeguimiento) EntrarSeguimiento(); };
+            d.Tick += (_, _) =>
+            {
+                d.Stop();
+                if (mio != turnoVoz) return;
+                loQueDice = "";
+                oido.Reiniciar();
+                if (entrarSeguimiento) EntrarSeguimiento(t);
+            };
             d.Start();
         }
         if (Config.VozActiva) boca.Decir(t, _ => ui.BeginInvoke(despues));
@@ -375,9 +445,17 @@ public sealed class Controlador
         }
     }
 
-    void EntrarSeguimiento()
+    void EntrarSeguimiento(string dijo = "")
     {
         if (fase is not (Fase.Hablando or Fase.Permiso)) return;
+        // Escuchar sin el nombre solo tiene sentido si preguntó algo, si espera un permiso o si la barra está abierta.
+        // Si no, vuelve a pedir el nombre: así una conversación cercana no se le manda como orden.
+        var hizoPregunta = dijo.TrimEnd().EndsWith("?");
+        if (fase == Fase.Hablando && !hizoPregunta && !barra.Abierta)
+        {
+            VolverAReposo(ocultarEn: Math.Min(12, 4 + dijo.Length / 40.0)); // la respuesta queda un rato a la vista
+            return;
+        }
         if (fase == Fase.Hablando) fase = Fase.Seguimiento;
         inicioEscucha = DateTime.Now;
         orden = "";
@@ -385,6 +463,37 @@ public sealed class Controlador
         if (!microfonoListo) { VolverAReposo(); return; }
         if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "seguimiento", titulo = pendientes.Count > 0 ? "¿Lo autorizo? Di sí o no" : "Te sigo escuchando…", texto = "" });
         else { pildora.PonerTitulo(pendientes.Count > 0 ? "¿Lo autorizo? Di sí o no" : "¿Algo más?"); pildora.OcultarEn(pendientes.Count > 0 ? 20 : 7); }
+    }
+
+    /// <summary>"Silencio", "descansa"…: se calla al instante, deja lo que estaba haciendo y cierra el micrófono.</summary>
+    void Descansar()
+    {
+        cerebro.Cancelar();
+        boca.Callar();
+        turnoVoz++;
+        loQueDice = "";
+        if (palabraPendiente != null) CancelarConfirmacion();
+        pendientes = new();
+        orden = "";
+        fase = Fase.Reposo;
+        if (microfonoListo) { oido.Detener(); microfonoListo = false; }
+        Config.Poner("microfono", "off");
+        Registro.Log("Descansando: voz cortada y micrófono cerrado");
+        pildora.Mostrar(Fase.Aviso, "Descansando", "No escucho nada. Para despertarme: Ctrl+Alt+Espacio o el icono junto al reloj.");
+        pildora.OcultarEn(5);
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "reposo", titulo = "Descansando: no escucho", texto = "" });
+        EnviarConfig();
+        bandeja.Actualizar();
+    }
+
+    /// <summary>Vuelve a escuchar. Con escuchar=true queda atento a la orden de una vez (sin decir el nombre).</summary>
+    public void Despertar(bool escuchar)
+    {
+        PonerMicrofono(true);
+        if (!microfonoListo) return;
+        Registro.Log("Despierto");
+        if (escuchar) Activar(false, "");
+        else { pildora.Mostrar(Fase.Aviso, "Te escucho de nuevo", $"Di «{Config.Asistente}» y tu pedido."); pildora.OcultarEn(3); }
     }
 
     void BotonSiNo(bool si)
@@ -405,7 +514,7 @@ public sealed class Controlador
 
     void AtajoPulsado()
     {
-        if (!microfonoListo) { barra.Mostrar(); barra.Enviar(new { tipo = "enfocar" }); return; }
+        if (!microfonoListo) { Despertar(escuchar: true); return; } // descansando: el atajo lo despierta y escucha
         switch (fase)
         {
             case Fase.Reposo:
@@ -478,9 +587,17 @@ public sealed class Controlador
                 break;
             case "config":
                 var clave = S("clave");
-                if (new[] { "asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres" }.Contains(clave))
+                if (new[] { "asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco", "volumen_automatico" }.Contains(clave))
                 {
                     Config.Poner(clave, S("valor"));
+                    if (clave is "cancelar_eco" or "volumen_automatico" && microfonoListo)
+                    {
+                        // Se reabre el micrófono con la nueva forma de oír.
+                        oido.Detener();
+                        microfonoListo = false;
+                        AbrirMicrofono();
+                        if (fase is Fase.Escuchando or Fase.Seguimiento) VolverAReposo();
+                    }
                     if (clave == "asistente") { Config.Poner("alias", ""); cerebro.NuevaConversacion(); }
                     if (clave == "modelo") cerebro.Reconfigurar();
                     RecalcularAlias();
@@ -535,6 +652,8 @@ public sealed class Controlador
             asistente = Config.Asistente, usuario = Config.Usuario, modelo = Config.Modelo, voz = Config.VozActiva,
             microfono = microfonoListo, microfonoConfig = Config.Microfono, escucharNombre = Config.EscucharNombre,
             vozEdge = Config.VozEdge, alias = Config.Alias, inicioWindows = InicioActivo, atajo = "Ctrl+Alt+Espacio",
+            cancelarEco = Config.Valor("cancelar_eco", "on") != "off", volumenAutomatico = Config.Valor("volumen_automatico", "on") != "off",
+            conEco = oido.ConEco,
             voces = Voces.Select(v => new { id = v.Split('|')[0], nombre = v.Split('|')[1] }),
             modelos = new[] { new { id = "haiku", nombre = "Haiku (el más rápido)" }, new { id = "sonnet", nombre = "Sonnet (equilibrado)" }, new { id = "opus", nombre = "Opus (el más capaz)" } },
         });

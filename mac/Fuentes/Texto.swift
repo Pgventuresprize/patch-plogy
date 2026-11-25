@@ -72,6 +72,28 @@ enum Texto {
         return (alias, aviso)
     }
 
+    static let palabrasDeDescanso: Set<String> = ["silencio", "callate", "calla", "callese", "callado", "descansa", "descansar",
+                                                  "descanso", "duermete", "dormir", "duerme", "detente", "basta", "stop",
+                                                  "suficiente", "shh", "shhh"]
+    static let frasesDeDescanso = ["deja de escuchar", "deja de hablar", "no escuches", "no me escuches", "dejame en paz",
+                                   "apagate", "no hables"]
+
+    /// "Silencio", "descansa", "cállate", "deja de escuchar"… La app lo resuelve sola: se calla y deja de escuchar.
+    /// Solo en frases cortas, para no confundir "busca el informe de silencio administrativo" con una orden de parar.
+    static func esOrdenDeDescanso(_ s: String) -> Bool {
+        let p = normalizar(s)
+        guard !p.isEmpty, p.count <= 6 else { return false }
+        let junto = " " + p.joined(separator: " ") + " "
+        return p.contains(where: { palabrasDeDescanso.contains($0) }) || frasesDeDescanso.contains(where: { junto.contains(" \($0) ") })
+    }
+
+    /// Mientras PATCH habla, una palabra de parada cuenta solo si no está en lo que él mismo dice.
+    static func esParadaMientrasHabla(_ oido: String, _ loQueDice: String) -> Bool {
+        guard esOrdenDeDescanso(oido) else { return false }
+        let propias = Set(normalizar(loQueDice))
+        return normalizar(oido).contains(where: { palabrasDeDescanso.contains($0) && !propias.contains($0) })
+    }
+
     static func esNegativo(_ s: String) -> Bool {
         let p = Set(normalizar(s))
         return p.contains("no") || p.contains("cancela") || p.contains("cancelar") || p.contains("espera")

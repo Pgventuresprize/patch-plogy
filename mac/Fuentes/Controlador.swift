@@ -29,6 +29,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var erroresSeguidos = 0
     private var turnoVoz = 0
     private var historial: [[String: Any]] = []
+    private var loQueDice = ""          // lo que PATCH está diciendo (para no interrumpirse con su propia voz)
+    private var activarAlDespertar = false
     private var calibracion: [String]?
     private var ultimoNivelBarra = Date.distantPast
 
@@ -92,6 +94,14 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try oido.arrancarMotor()
             microfonoListo = true
             volverAReposo()
+            if activarAlDespertar {
+                // Lo despertaron con el atajo: queda escuchando la orden sin pedir el nombre.
+                activarAlDespertar = false
+                enviarConfig()
+                actualizarIcono()
+                activar(conNombre: false, resto: "")
+                return
+            }
             vista.fase = .hablando
             vista.titulo = Ajustes.nombre
             vista.texto = "Listo. Di «\(Ajustes.nombre)», da dos palmadas o usa ⌃⌥J."
@@ -191,7 +201,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             mostrarEscucha()
             if final && !orden.isEmpty { enviar() }
         case .hablando:
-            break
+            // Mientras habla solo atiende "silencio", "cállate", "descansa"…
+            if Texto.esParadaMientrasHabla(t, loQueDice) { Registro.log("Interrumpido: «\(t)»"); descansar() }
         }
     }
 
@@ -233,8 +244,6 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch fase {
         case .escuchando where !orden.isEmpty:
             enviar()
-        case .hablando:
-            break
         default:
             let f = fase
             if f == .escuchando { conNombre = false }
@@ -254,6 +263,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         orden = ""
         guard !texto.isEmpty else { return }
         Registro.log("Orden: «\(texto)»")
+        // "Silencio", "descansa", "deja de escuchar"… se resuelve aquí mismo, sin Claude.
+        if palabraPendiente == nil && Texto.esOrdenDeDescanso(texto) { descansar(); return }
         if let palabra = palabraPendiente {
             // Hay una confirmación escrita pendiente: la voz no la reemplaza.
             if Texto.esNegativo(texto) { cancelarConfirmacion(); consultar("No lo autorizo. No lo hagas.", mostrando: texto); return }
@@ -342,14 +353,18 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func hablar(_ t: String, seguir: Bool = true) {
-        oido.detenerTranscripcion() // que no se escuche a sí mismo
+        // Sigue oyendo mientras habla (con el procesamiento de voz su propia voz se resta), pero en .hablando
+        // solo atiende órdenes de parar.
+        loQueDice = t
+        if microfonoListo { oido.iniciarTranscripcion(pistas: Ajustes.pistas) }
         fase = .hablando
         if !barra.abierta { panel.mostrar() }
         turnoVoz += 1
         let turno = turnoVoz
         let despues = { [weak self] in
             guard let self = self, self.turnoVoz == turno, self.fase == .hablando else { return }
-            if seguir { self.entrarSeguimiento() } else { self.fase = .seguimiento; self.inicioEscucha = Date(); self.escucharNombre() }
+            self.loQueDice = ""
+            if seguir { self.entrarSeguimiento(t) } else { self.fase = .seguimiento; self.inicioEscucha = Date(); self.escucharNombre() }
         }
         if ConfigPatch.vozActiva {
             boca.decir(t) { despues() }
@@ -359,7 +374,14 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Unos segundos para seguir hablando sin repetir el nombre.
-    private func entrarSeguimiento() {
+    private func entrarSeguimiento(_ dijo: String = "") {
+        // Escuchar sin el nombre solo si preguntó algo, si espera un permiso o si la barra está abierta: así una
+        // conversación cercana no se le manda como orden.
+        if pendientes.isEmpty && !barra.abierta && !dijo.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
+            volverAReposo(ocultar: false)
+            panel.ocultar(despues: min(12, 4 + Double(dijo.count) / 40))
+            return
+        }
         fase = .seguimiento
         inicioEscucha = Date()
         orden = ""
@@ -381,6 +403,42 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         barra.enviar(["tipo": "confirmar", "palabra": NSNull()])
     }
 
+    /// "Silencio", "descansa"…: se calla al instante, deja lo que estaba haciendo y cierra el micrófono.
+    private func descansar() {
+        cerebro.cancelar()
+        boca.callar()
+        turnoVoz += 1
+        loQueDice = ""
+        if palabraPendiente != nil { cancelarConfirmacion() }
+        pendientes = []
+        orden = ""
+        fase = .reposo
+        if microfonoListo {
+            oido.detenerTranscripcion()
+            oido.detenerMotor()
+            microfonoListo = false
+        }
+        Ajustes.microfono = false
+        Registro.log("Descansando: voz cortada y micrófono cerrado")
+        vista.fase = .hablando
+        vista.titulo = "Descansando"
+        vista.texto = "No escucho nada. Para despertarme: ⌃⌥J o el icono de la barra de menú."
+        vista.detalle = nil
+        vista.botones = .ninguno
+        panel.mostrar()
+        panel.ocultar(despues: 5)
+        estadoBarra("reposo", "Descansando: no escucho")
+        enviarConfig()
+        actualizarIcono()
+    }
+
+    /// Vuelve a escuchar. Con escuchar=true queda atento a la orden de una vez (sin decir el nombre).
+    private func despertar(escuchar: Bool) {
+        activarAlDespertar = escuchar
+        Registro.log("Despierto")
+        ponerMicrofono(true)
+    }
+
     // MARK: Gestos
 
     private func palmadas() {
@@ -393,7 +451,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func atajoPulsado() {
-        guard microfonoListo else { abrirBarra(); barra.enviar(["tipo": "enfocar"]); return }
+        guard microfonoListo else { despertar(escuchar: true); return } // descansando: el atajo lo despierta y escucha
         switch fase {
         case .reposo, .seguimiento: activar(conNombre: false, resto: "")
         case .escuchando: if orden.isEmpty { volverAReposo() } else { enviar() }
@@ -463,6 +521,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "tipo": "config", "asistente": Ajustes.nombre, "usuario": Ajustes.usuario, "modelo": Ajustes.modelo,
             "voz": ConfigPatch.vozActiva, "microfono": microfonoListo, "escucharNombre": Ajustes.escucharNombre,
             "vozEdge": ConfigPatch.valor("voz_edge"), "alias": Ajustes.alias, "inicioWindows": Inicio.activo, "atajo": "⌃⌥J",
+            "cancelarEco": ConfigPatch.valor("cancelar_eco") != "off",
             "voces": voces,
             "modelos": [["id": "haiku", "nombre": "Haiku (el más rápido)"], ["id": "sonnet", "nombre": "Sonnet (equilibrado)"],
                         ["id": "opus", "nombre": "Opus (el más capaz)"]],
@@ -489,8 +548,15 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !b("on") { boca.callar() }
         case "config":
             let clave = s("clave")
-            guard ["asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres"].contains(clave) else { return }
+            guard ["asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco"].contains(clave) else { return }
             ConfigPatch.poner(clave, s("valor"))
+            if clave == "cancelar_eco" && microfonoListo {
+                // Se reabre el micrófono con o sin el procesamiento de voz.
+                oido.detenerTranscripcion()
+                oido.detenerMotor()
+                microfonoListo = false
+                arrancarAudio()
+            }
             if clave == "asistente" { ConfigPatch.poner("alias", ""); cerebro.nuevaConversacion() }
             if clave == "modelo" { cerebro.reconfigurar() }
             if clave == "escuchar_nombre" && fase == .reposo { volverAReposo(ocultar: false) }

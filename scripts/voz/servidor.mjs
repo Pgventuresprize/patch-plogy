@@ -9,8 +9,11 @@ import { mkdirSync } from "node:fs";
 
 let tts = null;
 let vozActual = "";
+let ultimoUso = 0;
 
 async function preparar(voz) {
+  // Edge cierra las conexiones quietas; si pasó un rato, se rehace antes de pedir (evita esperar a que falle).
+  if (tts && Date.now() - ultimoUso > 45000) { try { tts.close(); } catch {} tts = null; }
   if (tts && voz === vozActual) return tts;
   try { tts?.close(); } catch {}
   tts = new MsEdgeTTS();
@@ -26,10 +29,13 @@ async function sintetizar(p) {
   for (let intento = 0; intento < 2; intento++) {
     try {
       const t = await preparar(p.voz || "es-CO-GonzaloNeural");
+      // Un intento lento casi siempre es una conexión muerta: mejor cortar pronto y rehacerla.
+      const limite = (intento === 0 ? 4000 : 9000) + p.texto.length * 8;
       const r = await Promise.race([
         t.toFile(p.carpeta, escapar(p.texto)),
-        new Promise((_, no) => setTimeout(() => no(new Error("tiempo agotado")), 12000)),
+        new Promise((_, no) => setTimeout(() => no(new Error("tiempo agotado")), limite)),
       ]);
+      ultimoUso = Date.now();
       return { id: p.id, ok: true, archivo: r.audioFilePath };
     } catch (e) {
       process.stderr.write(`voz: intento ${intento + 1} falló: ${e?.message || e}\n`);

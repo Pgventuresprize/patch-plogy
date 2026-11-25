@@ -8,6 +8,7 @@
     <!-- WPF y WinForms juntos chocan con los usings implícitos: van escritos en cada archivo. -->
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>PATCH</AssemblyName>
     <RootNamespace>Patch</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>

@@ -36,7 +36,7 @@ public sealed class Bandeja : IDisposable
     public void Actualizar()
     {
         microfono.Checked = c.MicrofonoActivo;
-        icono.Text = c.MicrofonoActivo ? $"PATCH — di «{Config.Asistente}» o Ctrl+Alt+Espacio" : "PATCH — micrófono bloqueado";
+        icono.Text = c.MicrofonoActivo ? $"PATCH — di «{Config.Asistente}» o Ctrl+Alt+Espacio" : "PATCH — descansando (Ctrl+Alt+Espacio para despertarlo)";
     }
 
     /// <summary>Círculo naranja de Plogy con una P blanca.</summary>

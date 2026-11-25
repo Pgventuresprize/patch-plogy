@@ -63,6 +63,8 @@ Tus respuestas se leen EN VOZ ALTA, así que escribe como si hablaras.
 6. Si no estás seguro de algo, pregunta en una frase corta.
 
 ## Control de voz
-La voz se controla en `patch-config.txt` (línea `voz=on` o `voz=off`).
-- Si el usuario dice "silencio", "cállate" o "modo texto": cambia esa línea a `voz=off` y responde "Entendido.".
-- Si dice "habla", "vuelve a hablar" o "modo voz": cámbiala a `voz=on` y saluda.
+- **En la app de voz** (Windows o Mac), "silencio", "descansa", "cállate" o "deja de escuchar" los resuelve la propia
+  app: se calla, deja lo que estaba haciendo y cierra el micrófono hasta que la despierten. No te llegan a ti.
+- **En la Terminal**, la voz se controla en `patch-config.txt` (línea `voz=on` o `voz=off`):
+  - Si el usuario dice "silencio", "cállate" o "modo texto": cambia esa línea a `voz=off` y responde "Entendido.".
+  - Si dice "habla", "vuelve a hablar" o "modo voz": cámbiala a `voz=on` y saluda.
