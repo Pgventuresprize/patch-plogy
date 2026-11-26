@@ -8,7 +8,11 @@ enum Fase { case reposo, escuchando, pensando, hablando, seguimiento }
 final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let oido = Oido()
     private let boca = Boca()
-    private let cerebro = Cerebro()
+    // Dos cerebros posibles: la cuenta de Claude (Claude Code) o la de ChatGPT (Codex). motor= en patch-config.txt.
+    private let claude = Cerebro()
+    private let chatgpt = CerebroCodex()
+    private var cerebro: Motor { Cuentas.motor == "chatgpt" ? chatgpt : claude }
+    private var vigilanciaCuentas = 0
     private let vista = EstadoVista()
     private let barra = BarraLateral()
     private var panel: Panel!
@@ -45,6 +49,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         Registro.log("PATCH arrancó (carpeta \(Ajustes.carpeta))")
+        Marca.registrarFuente()
         panel = Panel(vista: vista)
         vista.alTocar = { [weak self] in self?.tocarPanel() }
         vista.alBoton = { [weak self] si in self?.boton(si) }
@@ -56,7 +61,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         oido.alPalmadas = { [weak self] in self?.palmadas() }
         oido.alNivel = { [weak self] nivel in self?.alNivel(nivel) }
         oido.alTerminarTarea = { [weak self] in self?.tareaTerminada() }
-        cerebro.alSuelta = { [weak self] r in
+        claude.alSuelta = { [weak self] r in
             // Contestó aparte algo que se le sumó justo al terminar. Si ya está en otra cosa, solo queda escrito.
             guard let self = self else { return }
             if self.fase == .reposo || self.fase == .seguimiento { self.fase = .pensando; self.respuesta(r) }
@@ -75,8 +80,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Ajustes.microfono { pedirPermisos() }
         cerebro.precalentar()
 
+        // Primera vez: la barra abre el onboarding (cuenta, nombre, voz). La marca se guarda al terminarlo.
         if !UserDefaults.standard.bool(forKey: "bienvenidaHecha") {
-            UserDefaults.standard.set(true, forKey: "bienvenidaHecha")
             barra.mostrar()
             barra.enviar(["tipo": "bienvenida"])
         }
@@ -656,7 +661,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // En Mac habla la voz del sistema (Paulina u otra en español): no hay voces de Edge para elegir.
         let voces: [[String: String]] = []
         barra.enviar([
-            "tipo": "config", "asistente": Ajustes.nombre, "usuario": Ajustes.usuario, "modelo": Ajustes.modelo,
+            "tipo": "config", "asistente": Ajustes.nombre, "usuario": Ajustes.usuario, "modelo": Ajustes.modelo, "motor": Cuentas.motor,
             "voz": ConfigPatch.vozActiva, "microfono": microfonoListo, "escucharNombre": Ajustes.escucharNombre,
             "vozEdge": ConfigPatch.valor("voz_edge"), "alias": Ajustes.alias, "inicioWindows": Inicio.activo, "atajo": "⌘⌥P",
             "cancelarEco": ConfigPatch.valor("cancelar_eco") != "off",
@@ -664,6 +669,28 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "modelos": [["id": "haiku", "nombre": "Haiku (el más rápido)"], ["id": "sonnet", "nombre": "Sonnet (equilibrado)"],
                         ["id": "opus", "nombre": "Opus (el más capaz)"]],
         ])
+    }
+
+    /// Le dice a la barra si hay sesión de Claude y de ChatGPT (para el onboarding y los ajustes).
+    private func enviarCuentas(_ listo: ((Bool, Bool) -> Void)? = nil) {
+        Cuentas.consultar { [weak self] c, g in
+            self?.barra.enviar(["tipo": "cuentas", "motor": Cuentas.motor, "claude": c.json, "chatgpt": g.json])
+            listo?(c.conectado, g.conectado)
+        }
+    }
+
+    /// Tras abrir un inicio de sesión o una instalación, revisa cada 3 s (hasta 6 min) hasta que quede conectado.
+    private func vigilarCuenta(_ proveedor: String, intento: Int = 0, vigilancia: Int? = nil) {
+        let mia: Int
+        if let v = vigilancia { mia = v } else { vigilanciaCuentas += 1; mia = vigilanciaCuentas }
+        guard intento < 120, mia == vigilanciaCuentas else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self = self, mia == self.vigilanciaCuentas else { return }
+            self.enviarCuentas { c, g in
+                if (proveedor == "chatgpt" ? g : c) { Registro.log("Sesión lista (\(proveedor))"); return }
+                self.vigilarCuenta(proveedor, intento: intento + 1, vigilancia: mia)
+            }
+        }
     }
 
     private func deLaBarra(_ m: [String: Any]) {
@@ -694,7 +721,17 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !b("on") { boca.callar() }
         case "config":
             let clave = s("clave")
-            guard ["asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco"].contains(clave) else { return }
+            guard ["asistente", "usuario", "modelo", "motor", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco"].contains(clave) else { return }
+            if clave == "motor" {
+                guard Cuentas.valido(s("valor")), s("valor") != Cuentas.motor else { return }
+                cerebro.cancelar()
+                ConfigPatch.poner("motor", s("valor"))
+                Registro.log("Ahora piensa con \(Cuentas.motor == "chatgpt" ? "ChatGPT" : "Claude")")
+                if fase == .pensando { volverAReposo(ocultar: false) }
+                cerebro.precalentar()
+                enviarConfig()
+                return
+            }
             ConfigPatch.poner(clave, s("valor"))
             if clave == "cancelar_eco" && microfonoListo {
                 // Se reabre el micrófono con o sin el procesamiento de voz.
@@ -721,6 +758,16 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 consultar("No lo autorizo. No lo hagas.", mostrando: "Cancelado")
             }
         case "permiso": enviar(b("ok") ? "sí" : "no")
+        case "cuentas": enviarCuentas()
+        case "login", "instalar":
+            let p = s("proveedor")
+            guard Cuentas.valido(p) else { return }
+            if tipo == "login" { Cuentas.iniciarSesion(p) } else { Cuentas.instalar(p) }
+            vigilarCuenta(p)
+        case "onboardingListo":
+            UserDefaults.standard.set(true, forKey: "bienvenidaHecha")
+            Registro.log("Onboarding terminado (piensa con \(Cuentas.motor))")
+            enviarConfig()
         case "calibrar": empezarCalibracion()
         case "probarVoz": hablar("Hola, soy \(Ajustes.nombre). Así sueno.", seguir: false)
         case "nuevaConversacion":

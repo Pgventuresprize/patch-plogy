@@ -18,13 +18,18 @@ public enum Fase { Reposo, Escuchando, Pensando, Hablando, Seguimiento, Permiso,
 /// </summary>
 public sealed class Pildora : Window
 {
-    public static readonly Color Naranja = Color.FromRgb(0xFF, 0x5B, 0x00);
-    static readonly Brush Fondo = new SolidColorBrush(Color.FromArgb(0xF2, 0x17, 0x17, 0x19));
+    public static readonly Color Naranja = Marca.Naranja;
+    // Tinta de Plogy casi opaca.
+    static readonly Brush Fondo = new SolidColorBrush(Color.FromArgb(0xF2, Marca.Tinta.R, Marca.Tinta.G, Marca.Tinta.B));
+    static readonly Brush Esfera = Marca.Esfera();
+    // Descansando o aviso: la esfera se apaga a gris cálido (#A39486, borde del kit).
+    static readonly Brush Apagada = new SolidColorBrush(Marca.Borde);
 
-    readonly TextBlock titulo = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly TextBlock texto = new() { FontSize = 12.5, Foreground = new SolidColorBrush(Color.FromRgb(0xD8, 0xD8, 0xDC)), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.WordEllipsis, MaxHeight = 52 };
-    readonly Ellipse punto = new() { Width = 14, Height = 14, Fill = new SolidColorBrush(Naranja) };
-    readonly Ellipse halo = new() { Width = 30, Height = 30, Fill = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0x5B, 0x00)) };
+    readonly TextBlock titulo = new() { FontSize = 14, FontFamily = Marca.Display, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Marca.Superficie), TextTrimming = TextTrimming.CharacterEllipsis };
+    readonly TextBlock texto = new() { FontSize = 12.5, FontFamily = Marca.Cuerpo, Foreground = new SolidColorBrush(Color.FromArgb(0xD9, Marca.Superficie.R, Marca.Superficie.G, Marca.Superficie.B)), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.WordEllipsis, MaxHeight = 52, Margin = new Thickness(0, 2, 0, 0) };
+    // El indicador es la esfera de Plogy; el halo coral respira con la voz.
+    readonly Ellipse punto = new() { Width = 16, Height = 16, Fill = Esfera };
+    readonly Ellipse halo = new() { Width = 30, Height = 30, Fill = new SolidColorBrush(Color.FromArgb(0x4D, Marca.Coral.R, Marca.Coral.G, Marca.Coral.B)) };
     readonly StackPanel botones = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
     readonly DispatcherTimer ocultar = new();
     readonly DispatcherTimer latido = new() { Interval = TimeSpan.FromMilliseconds(45) };
@@ -72,8 +77,8 @@ public sealed class Pildora : Window
         Content = new Border
         {
             Background = Fondo,
-            CornerRadius = new CornerRadius(16),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
+            CornerRadius = new CornerRadius(20),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x26, Marca.Superficie.R, Marca.Superficie.G, Marca.Superficie.B)),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(14, 12, 16, 12),
             Margin = new Thickness(10),
@@ -92,16 +97,24 @@ public sealed class Pildora : Window
 
     Button CrearBoton(string t, bool si)
     {
+        // Botón en píldora del kit: naranja con texto tinta (contraste), o panel oscuro con texto claro.
         var b = new Button
         {
-            Content = t, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 3, 14, 3),
-            Foreground = Brushes.White, BorderThickness = new Thickness(0), Cursor = Cursors.Hand,
-            Background = si ? new SolidColorBrush(Naranja) : new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3F)),
+            Content = t, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(18, 5, 18, 5),
+            FontFamily = Marca.Display, FontWeight = FontWeights.Bold, FontSize = 12.5,
+            Foreground = new SolidColorBrush(si ? Marca.Tinta : Marca.Superficie), BorderThickness = new Thickness(0), Cursor = Cursors.Hand,
+            Background = new SolidColorBrush(si ? Naranja : Marca.Panel),
             Focusable = false,
+            Template = PlantillaPildora,
         };
         b.Click += (_, _) => Boton?.Invoke(si);
         return b;
     }
+
+    static readonly ControlTemplate PlantillaPildora = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'>" +
+        "<Border Background='{TemplateBinding Background}' CornerRadius='999' Padding='{TemplateBinding Padding}'>" +
+        "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border></ControlTemplate>");
 
     void Ubicar()
     {
@@ -117,7 +130,7 @@ public sealed class Pildora : Window
         texto.Text = cuerpo;
         texto.Visibility = string.IsNullOrWhiteSpace(cuerpo) ? Visibility.Collapsed : Visibility.Visible;
         botones.Visibility = siNo ? Visibility.Visible : Visibility.Collapsed;
-        punto.Fill = new SolidColorBrush(f is Fase.Aviso ? Color.FromRgb(0xE8, 0xB3, 0x3A) : Naranja);
+        punto.Fill = f is Fase.Aviso ? Apagada : Esfera;
         ocultar.Stop();
         if (!IsVisible) { Show(); Ubicar(); }
         BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(140)));

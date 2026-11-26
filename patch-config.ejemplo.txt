@@ -4,6 +4,7 @@ voz=on
 max_caracteres=600
 voz_edge=es-CO-GonzaloNeural
 modelo=sonnet
+motor=claude
 microfono=on
 escuchar_nombre=on
 alias=

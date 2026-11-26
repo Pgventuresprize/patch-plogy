@@ -16,11 +16,7 @@ final class EstadoVista: ObservableObject {
     var alBoton: ((Bool) -> Void)?
 }
 
-// Naranja de Plogy (#FF5B00) con dos tonos vecinos para que el orbe se vea vivo.
-private let magenta = Color(red: 1.0, green: 0.357, blue: 0.0)
-private let coral = Color(red: 1.0, green: 0.60, blue: 0.25)
-private let violeta = Color(red: 0.85, green: 0.22, blue: 0.05)
-
+/// La esfera de Plogy (brand kit 02): degradado vertical coral → violeta que gira suave para verse viva.
 struct Orbe: View {
     let fase: FaseVista
     let nivel: Float
@@ -33,10 +29,11 @@ struct Orbe: View {
             let pulso: CGFloat = fase == .hablando ? 1 + 0.07 * CGFloat(sin(t * 7)) : 1
             ZStack {
                 Circle()
-                    .fill(AngularGradient(colors: [magenta, coral, violeta, magenta], center: .center))
-                    .rotationEffect(.degrees((t * velocidad).truncatingRemainder(dividingBy: 360)))
-                    .blur(radius: 1.5)
-                Circle().fill(Color.white.opacity(0.22)).scaleEffect(0.42)
+                    .fill(LinearGradient(colors: Marca.esfera, startPoint: .top, endPoint: .bottom))
+                    .rotationEffect(.degrees(fase == .escuchando ? 0 : (t * velocidad / 6).truncatingRemainder(dividingBy: 360)))
+                Circle()
+                    .stroke(Marca.esfera[0].opacity(0.35), lineWidth: 3)
+                    .scaleEffect(1.18 + voz * 0.4)
             }
             .scaleEffect((0.85 + voz) * pulso)
             .animation(.easeOut(duration: 0.08), value: voz)
@@ -53,11 +50,12 @@ struct VistaPildora: View {
                 Orbe(fase: e.fase, nivel: e.nivel).frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(e.titulo)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(Marca.display(13))
+                        .foregroundStyle(Marca.superficie.opacity(0.75))
                         .lineLimit(1)
                     Text(e.texto.isEmpty ? "…" : e.texto)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(Marca.cuerpo(15))
+                        .foregroundStyle(Marca.superficie)
                         .lineLimit(7)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -66,26 +64,32 @@ struct VistaPildora: View {
             if let d = e.detalle {
                 Text(d)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Marca.superficie.opacity(0.7))
                     .lineLimit(3)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.3)))
             }
             if e.botones != .ninguno {
                 HStack(spacing: 8) {
                     Spacer()
                     Button("No") { e.alBoton?(false) }
+                        .buttonStyle(BotonPlogy(principal: false))
                     Button(e.botones == .autorizar ? "Autorizar" : "Sí") { e.alBoton?(true) }
+                        .buttonStyle(BotonPlogy(principal: true))
                         .keyboardShortcut(.defaultAction)
                 }
-                .controlSize(.regular)
             }
         }
         .padding(16)
         .frame(width: 440, alignment: .leading)
-        .background(EfectoVidrio().clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.14)))
+        // Vidrio oscuro con tinta de Plogy encima, borde claro sutil.
+        .background(ZStack {
+            EfectoVidrio()
+            Marca.tinta.opacity(0.82)
+        }.clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous)))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Marca.superficie.opacity(0.14)))
+        .environment(\.colorScheme, .dark)
         .contentShape(Rectangle())
         .onTapGesture { e.alTocar?() }
     }

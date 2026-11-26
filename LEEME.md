@@ -1,8 +1,14 @@
+<img src="ui/marca/plogy-color.svg" alt="Plogy" width="160">
+
 # PATCH · Plogy Academy
 
 Un asistente de IA al que le hablas por su nombre y que busca, ordena y hace cosas en tu computador y en tu Google,
 en segundo plano, mientras sigues trabajando. Tú eliges cómo se llama (por defecto, **Patch**).
-Funciona con **Claude Code** (y también con **Codex**), en Mac y Windows.
+Funciona con tu cuenta de **Claude** (Claude Code) o de **ChatGPT** (Codex), en Mac y Windows. Todo corre en tu
+computador: no necesitas claves de API, solo iniciar sesión con la cuenta que ya tienes.
+
+La primera vez que abres la app, un recorrido corto te ayuda a conectar tu cuenta, ponerle nombre y voz a tu
+asistente y elegir cómo hablarle. Puedes repetirlo desde Ajustes.
 
 ## Instalar (una sola vez)
 **Mac:** abre Terminal, escribe `cd `, arrastra esta carpeta a la ventana y presiona Enter. Luego:

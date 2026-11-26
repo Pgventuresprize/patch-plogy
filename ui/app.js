@@ -81,10 +81,16 @@
     if (document.activeElement !== $("cfgUsuario")) $("cfgUsuario").value = cfg.usuario || "";
     if (cfg.modelos) $("cfgModelo").innerHTML = cfg.modelos.map((m) => `<option value="${m.id}">${escapar(m.nombre)}</option>`).join("");
     $("cfgModelo").value = cfg.modelo;
-    if (cfg.voces) $("cfgVoz").innerHTML = cfg.voces.map((v) => `<option value="${v.id}">${escapar(v.nombre)}</option>`).join("");
-    $("cfgVoz").value = cfg.vozEdge;
+    // Con ChatGPT no se elige modelo de Claude: usa el de su cuenta.
+    const conChatGPT = cfg.motor === "chatgpt";
+    $("cfgMotorTexto").textContent = conChatGPT ? "ChatGPT (con Codex)" : "Claude (con Claude Code)";
+    $("campoModelo").hidden = conChatGPT;
+    $("notaModeloChatGPT").hidden = !conChatGPT;
+    if (cfg.voces) $("cfgVoz").innerHTML = $("obVoz").innerHTML = cfg.voces.map((v) => `<option value="${v.id}">${escapar(v.nombre)}</option>`).join("");
+    $("cfgVoz").value = $("obVoz").value = cfg.vozEdge;
     // Sin voces para elegir (Mac usa la del sistema): solo queda el botón de probar.
-    $("cfgVoz").hidden = !(cfg.voces && cfg.voces.length);
+    $("cfgVoz").hidden = $("obVoz").hidden = !(cfg.voces && cfg.voces.length);
+    if (!$("onboarding").hidden) { pintarCuentas(); if (obPaso === 4) pintarFinal(); }
     $("cfgLeer").checked = !!cfg.voz;
     $("cfgEscuchar").checked = cfg.escucharNombre !== false;
     $("cfgEco").checked = cfg.cancelarEco !== false;
@@ -180,7 +186,7 @@
     if (e.fase === "escuchando") { p.textContent = "Te escucho…"; p.classList.add("escuchando"); mostrarEnVivo(e.texto || ""); }
     else if (e.fase === "seguimiento") { p.textContent = e.titulo || "Te sigo escuchando…"; p.classList.add("escuchando"); quitarEnVivo(); }
     else { pista(); if (e.fase !== "escuchando") quitarEnVivo(); }
-    $("avatar").style.boxShadow = e.fase === "hablando" ? "0 0 0 4px rgba(255,91,0,.25)" : "none";
+    $("avatar").style.boxShadow = e.fase === "hablando" ? "0 0 0 5px rgba(247,89,70,.28)" : "none";
   }
 
   // ---------------------------------------------------------------- Confirmaciones
@@ -218,14 +224,12 @@
 
   // ---------------------------------------------------------------- Calibración
   function calibracion(m) {
-    const e = $("calEstado");
-    if (m.terminado) {
-      $("btnCalibrar").disabled = false;
-      e.innerHTML = m.aviso ? escapar(m.aviso) : (m.alias && m.alias.length ? "Listo: ya sé cómo te oigo." : "Listo.");
-      return;
-    }
-    $("btnCalibrar").disabled = true;
-    e.innerHTML = `Di <b>«${escapar(m.nombre)}»</b> (${m.paso} de ${m.total})` + (m.oido ? `<br>Antes oí: «${escapar(m.oido)}»` : "");
+    // Se muestra en Ajustes y, si está abierto, en el onboarding.
+    const html = m.terminado
+      ? (m.aviso ? escapar(m.aviso) : (m.alias && m.alias.length ? "Listo: ya sé cómo te oigo." : "Listo."))
+      : `Di <b>«${escapar(m.nombre)}»</b> (${m.paso} de ${m.total})` + (m.oido ? `<br>Antes oí: «${escapar(m.oido)}»` : "");
+    $("btnCalibrar").disabled = $("obCalibrar").disabled = !m.terminado;
+    $("calEstado").innerHTML = $("obCalEstado").innerHTML = html;
   }
   $("btnCalibrar").onclick = () => Puente.enviar({ tipo: "calibrar" });
 
@@ -249,12 +253,14 @@
       case "escuchando": {
         // Durante la calibración se muestra lo que va oyendo
         if (!$("btnCalibrar").disabled) break;
-        let vivo = $("calEstado").querySelector(".vivo");
-        if (!vivo) { vivo = document.createElement("div"); vivo.className = "vivo"; $("calEstado").appendChild(vivo); }
+        const destino = $("onboarding").hidden ? $("calEstado") : $("obCalEstado");
+        let vivo = destino.querySelector(".vivo");
+        if (!vivo) { vivo = document.createElement("div"); vivo.className = "vivo"; destino.appendChild(vivo); }
         vivo.textContent = "… " + m.texto;
         break;
       }
-      case "bienvenida": abrirAjustes(true); break;
+      case "bienvenida": abrirOnboarding(0); break;
+      case "cuentas": recibirCuentas(m); break;
       case "seccion": if (m.nombre === "ajustes") abrirAjustes(false); break;
       case "abierta": case "enfocar": if ($("ajustes").hidden) setTimeout(() => entrada.focus(), 30); break;
     }
@@ -288,6 +294,99 @@
     if (bienvenida) setTimeout(() => $("cfgAsistente").select(), 50);
   }
 
+  // ---------------------------------------------------------------- Onboarding
+  // Cuenta (Claude o ChatGPT, todo local), nombre, voz y forma de hablarle. Usa los mismos mensajes que Ajustes.
+  let obPaso = 0;
+  let cuentas = null; // { claude: {instalado, conectado, detalle}, chatgpt: {...} }
+  const motorActual = () => (cfg.motor === "chatgpt" ? "chatgpt" : "claude");
+  const nombreMotor = (p) => (p === "chatgpt" ? "ChatGPT" : "Claude");
+
+  function abrirOnboarding(paso) {
+    $("ajustes").hidden = true;
+    $("onboarding").hidden = false;
+    irA(paso || 0);
+    Puente.enviar({ tipo: "cuentas" });
+  }
+  function cerrarOnboarding() {
+    $("onboarding").hidden = true;
+    Puente.enviar({ tipo: "onboardingListo" });
+    setTimeout(() => entrada.focus(), 30);
+  }
+  function irA(n) {
+    obPaso = Math.max(0, Math.min(4, n));
+    document.querySelectorAll(".ob-paso").forEach((p) => (p.hidden = Number(p.dataset.paso) !== obPaso));
+    document.querySelectorAll("#obPasos i").forEach((i, k) => (i.className = k < obPaso ? "hecho" : k === obPaso ? "actual" : ""));
+    $("obSaltar").hidden = obPaso === 4;
+    if (obPaso === 1) { pintarCuentas(); Puente.enviar({ tipo: "cuentas" }); }
+    if (obPaso === 2) {
+      $("obAsistente").value = cfg.asistente || "";
+      $("obUsuario").value = cfg.usuario || "";
+      setTimeout(() => $("obAsistente").select(), 50);
+    }
+    if (obPaso === 3) { $("obEscuchar").checked = cfg.escucharNombre !== false; $("obLeer").checked = !!cfg.voz; }
+    if (obPaso === 4) pintarFinal();
+  }
+  function pintarCuentas() {
+    const motor = motorActual();
+    for (const card of document.querySelectorAll(".cuenta")) {
+      const p = card.dataset.proveedor, c = cuentas && cuentas[p];
+      const est = card.querySelector("[data-estado]"), acc = card.querySelector("[data-accion]");
+      const usar = card.querySelector("[data-usar]"), elegida = card.querySelector("[data-elegida]");
+      const enUso = motor === p;
+      if (!c) { est.textContent = "Revisando…"; est.classList.remove("ok"); acc.hidden = usar.hidden = elegida.hidden = true; card.classList.remove("elegida"); continue; }
+      if (!card.dataset.esperando || c.conectado) {
+        est.textContent = c.conectado ? (c.detalle || "Conectado") : c.instalado ? "Sin sesión" : "No instalado";
+        delete card.dataset.esperando;
+      }
+      est.classList.toggle("ok", !!c.conectado);
+      acc.hidden = !!c.conectado;
+      acc.textContent = c.instalado ? "Iniciar sesión" : "Instalar";
+      acc.dataset.tipo = c.instalado ? "login" : "instalar";
+      usar.hidden = !c.conectado || enUso;
+      elegida.hidden = !(c.conectado && enUso);
+      card.classList.toggle("elegida", !!c.conectado && enUso);
+    }
+    $("obCuentaSiguiente").disabled = !(cuentas && cuentas[motor] && cuentas[motor].conectado);
+  }
+  document.querySelectorAll(".cuenta").forEach((card) => {
+    const p = card.dataset.proveedor;
+    card.querySelector("[data-accion]").onclick = (e) => {
+      const tipo = e.target.dataset.tipo || "login";
+      card.dataset.esperando = "1";
+      card.querySelector("[data-estado]").textContent = tipo === "login" ? "Esperando el inicio de sesión…" : "Instalando…";
+      // Al iniciar sesión con una cuenta, esa pasa a ser la que piensa.
+      if (motorActual() !== p) { cfg.motor = p; guardar("motor", p); }
+      Puente.enviar({ tipo, proveedor: p });
+      pintarCuentas();
+    };
+    card.querySelector("[data-usar]").onclick = () => { cfg.motor = p; guardar("motor", p); pintarCuentas(); };
+  });
+  function recibirCuentas(m) {
+    cuentas = { claude: m.claude, chatgpt: m.chatgpt };
+    if (m.motor) cfg.motor = m.motor;
+    // Si la cuenta elegida no tiene sesión y la otra sí, se usa la otra.
+    const motor = motorActual(), otra = motor === "claude" ? "chatgpt" : "claude";
+    if (!$("onboarding").hidden && !(cuentas[motor] || {}).conectado && (cuentas[otra] || {}).conectado) { cfg.motor = otra; guardar("motor", otra); }
+    pintarCuentas();
+  }
+  function pintarFinal() {
+    $("obFinalTitulo").textContent = `Todo listo${cfg.usuario ? ", " + cfg.usuario : ""}.`;
+    $("obFinalTexto").textContent = `Di «${cfg.asistente}» o escríbele aquí abajo. Todo esto se puede cambiar en Ajustes.`;
+    const c = cuentas && cuentas[motorActual()];
+    const voz = (cfg.voces || []).find((v) => v.id === cfg.vozEdge);
+    const chips = [`Piensa con ${nombreMotor(motorActual())}${c && c.detalle && c.conectado ? " · " + c.detalle : ""}`, `Se llama ${cfg.asistente}`];
+    if (voz) chips.push(`Voz: ${voz.nombre}`);
+    chips.push(cfg.escucharNombre !== false ? "Te escucha cuando dices su nombre" : `Háblale con ${cfg.atajo || "Ctrl+Alt+P"}`);
+    $("obResumen").innerHTML = chips.map((t) => `<span>${escapar(t)}</span>`).join("");
+    $("obTerminar").textContent = `Empezar a usar ${cfg.asistente}`;
+  }
+  document.querySelectorAll(".ob-siguiente").forEach((b) => (b.onclick = () => irA(obPaso + 1)));
+  document.querySelectorAll(".ob-atras").forEach((b) => (b.onclick = () => irA(obPaso - 1)));
+  $("obSaltar").onclick = cerrarOnboarding;
+  $("obTerminar").onclick = cerrarOnboarding;
+  $("btnCambiarCuenta").onclick = () => abrirOnboarding(1);
+  $("btnOnboarding").onclick = () => abrirOnboarding(0);
+
   // ---------------------------------------------------------------- Ajustes
   const guardar = (clave, valor) => Puente.enviar({ tipo: "config", clave, valor: String(valor) });
   $("cfgAsistente").addEventListener("change", (e) => { const v = e.target.value.trim() || "Patch"; e.target.value = v; guardar("asistente", v); });
@@ -311,6 +410,14 @@
   $("cfgInicio").addEventListener("change", (e) => Puente.enviar({ tipo: "inicioWindows", on: e.target.checked }));
   document.querySelectorAll("[data-abrir]").forEach((b) => (b.onclick = () => Puente.enviar({ tipo: "abrir", que: b.dataset.abrir })));
   $("btnNueva").onclick = () => { Puente.enviar({ tipo: "nuevaConversacion" }); $("ajustes").hidden = true; };
+  // Onboarding (pasos 2 y 3): mismos mensajes que Ajustes
+  $("obAsistente").addEventListener("change", (e) => { const v = e.target.value.trim() || "Patch"; e.target.value = v; cfg.asistente = v; guardar("asistente", v); });
+  $("obUsuario").addEventListener("change", (e) => { cfg.usuario = e.target.value.trim(); guardar("usuario", cfg.usuario); });
+  $("obVoz").addEventListener("change", (e) => { cfg.vozEdge = e.target.value; guardar("voz_edge", e.target.value); });
+  $("obProbarVoz").onclick = (e) => { e.preventDefault(); Puente.enviar({ tipo: "probarVoz" }); };
+  $("obEscuchar").addEventListener("change", (e) => { cfg.escucharNombre = e.target.checked; guardar("escuchar_nombre", e.target.checked ? "on" : "off"); });
+  $("obLeer").addEventListener("change", (e) => { cfg.voz = e.target.checked; aplicarConfig({}); Puente.enviar({ tipo: "voz", on: e.target.checked }); });
+  $("obCalibrar").onclick = () => Puente.enviar({ tipo: "calibrar" });
 
   // En Mac la opción de arranque dice "al iniciar sesión"
   if (navigator.platform && navigator.platform.toLowerCase().includes("mac")) {

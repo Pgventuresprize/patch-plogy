@@ -35,7 +35,7 @@ final class BarraLateral: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         ventana.isFloatingPanel = true
         ventana.level = .floating
         ventana.hidesOnDeactivate = false
-        ventana.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        ventana.backgroundColor = Marca.tintaNS
         ventana.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         ventana.hasShadow = true
         ventana.contentView = web
