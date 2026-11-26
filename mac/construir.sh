@@ -15,6 +15,15 @@ swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos14.0" \
   -o "$SALIDA/Contents/MacOS/PATCH" \
   -framework AppKit -framework SwiftUI -framework AVFoundation -framework Speech -framework Carbon -framework WebKit
 cp "$DIR/Info.plist" "$SALIDA/Contents/Info.plist"
+# Ícono de la app: la esfera de Plogy sobre tinta (brand kit 02), de un PNG de 1024 px a .icns.
+if [ -f "$DIR/Recursos/AppIcon-1024.png" ] && command -v iconutil >/dev/null; then
+  ICONOS="$DIR/build/AppIcon.iconset"; mkdir -p "$ICONOS"
+  for t in 16 32 128 256 512; do
+    sips -z $t $t "$DIR/Recursos/AppIcon-1024.png" --out "$ICONOS/icon_${t}x${t}.png" >/dev/null
+    sips -z $((t * 2)) $((t * 2)) "$DIR/Recursos/AppIcon-1024.png" --out "$ICONOS/icon_${t}x${t}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONOS" -o "$SALIDA/Contents/Resources/AppIcon.icns"
+fi
 # La interfaz compartida con Windows (barra lateral y ajustes)
 if [ -d "$PROYECTO/ui" ]; then cp -R "$PROYECTO/ui" "$SALIDA/Contents/Resources/ui"; fi
 codesign --force --sign - "$SALIDA"

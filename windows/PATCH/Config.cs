@@ -80,6 +80,8 @@ public static class Config
     public static string Asistente => Valor("asistente", "Patch");
     public static string Usuario => Valor("usuario");
     public static string Modelo => Valor("modelo", "sonnet");
+    /// <summary>Con qué cuenta piensa la app: "claude" (Claude Code) o "chatgpt" (Codex).</summary>
+    public static string Motor => Valor("motor", "claude") == "chatgpt" ? "chatgpt" : "claude";
     public static bool VozActiva => Valor("voz", "on") != "off";
     public static bool Microfono => Valor("microfono", "on") != "off";
     public static bool EscucharNombre => Valor("escuchar_nombre", "on") != "off";

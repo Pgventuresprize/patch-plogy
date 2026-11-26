@@ -57,7 +57,7 @@ public sealed class Resultado
 /// orden por la misma conexión: así cada turno tarda ~1,5 s en arrancar en vez de ~8 s.
 /// Para una acción ya confirmada por el usuario se usa un proceso aparte con ese permiso exacto, y luego se sigue.
 /// </summary>
-public sealed class Cerebro
+public sealed class Cerebro : ICerebro
 {
     sealed class Turno
     {

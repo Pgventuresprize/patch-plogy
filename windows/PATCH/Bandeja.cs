@@ -24,7 +24,7 @@ public sealed class Bandeja : IDisposable
         menu.Items.Add("Salir de PATCH", null, (_, _) => c.Salir());
         icono = new NotifyIcon
         {
-            Icon = Dibujar(),
+            Icon = Marca.Icono(System.Windows.Forms.SystemInformation.SmallIconSize.Width),
             Text = "PATCH — di el nombre de tu asistente o Ctrl+Alt+P",
             ContextMenuStrip = menu,
             Visible = true,
@@ -37,23 +37,6 @@ public sealed class Bandeja : IDisposable
     {
         microfono.Checked = c.MicrofonoActivo;
         icono.Text = c.MicrofonoActivo ? $"PATCH — di «{Config.Asistente}» o Ctrl+Alt+P" : "PATCH — descansando (Ctrl+Alt+P para despertarlo)";
-    }
-
-    /// <summary>Círculo naranja de Plogy con una P blanca.</summary>
-    static Icon Dibujar()
-    {
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            using var naranja = new SolidBrush(Color.FromArgb(0xFF, 0x5B, 0x00));
-            g.FillEllipse(naranja, 1, 1, 30, 30);
-            using var f = new Font("Segoe UI", 15, FontStyle.Bold, GraphicsUnit.Pixel);
-            var tam = g.MeasureString("P", f);
-            g.DrawString("P", f, Brushes.White, (32 - tam.Width) / 2 + 0.5f, (32 - tam.Height) / 2);
-        }
-        return Icon.FromHandle(bmp.GetHicon());
     }
 
     public void Dispose()

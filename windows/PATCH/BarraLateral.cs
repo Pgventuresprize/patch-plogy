@@ -36,7 +36,8 @@ public sealed class BarraLateral : Window
         ShowInTaskbar = false;
         Topmost = true;
         Width = Ancho;
-        Background = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x14));
+        Background = new SolidColorBrush(Marca.Tinta);
+        try { Icon = Marca.IconoVentana(); } catch { }
         Content = web;
         actual = this;
         SourceInitialized += (_, _) => reserva = new Nativo.BarraReservada(this, Ancho);

@@ -17,7 +17,11 @@ public sealed class Controlador
     readonly Dispatcher ui = Application.Current.Dispatcher;
     readonly Oido oido = new();
     readonly Boca boca = new();
-    readonly Cerebro cerebro = new();
+    // Dos cerebros posibles: la cuenta de Claude (Claude Code) o la de ChatGPT (Codex). Config.Motor elige.
+    readonly Cerebro claude = new();
+    readonly CerebroCodex chatgpt = new();
+    ICerebro cerebro => Config.Motor == "chatgpt" ? chatgpt : claude;
+    int vigilanciaCuentas;      // sube con cada inicio de sesión abierto (para cortar la vigilancia vieja)
     readonly Transcriptor transcriptor = new();
     int turnoOido;              // sube con cada orden que pasa por Whisper (para descartar respuestas viejas)
     Pildora pildora = null!;
@@ -78,7 +82,7 @@ public sealed class Controlador
         oido.Nivel += n => ui.BeginInvoke(() => AlNivel(n));
         oido.Problema += t => ui.BeginInvoke(() => Avisar(t));
 
-        cerebro.Suelta += r => ui.BeginInvoke(() =>
+        claude.Suelta += r => ui.BeginInvoke(() =>
         {
             // Contestó aparte algo que se le sumó justo al terminar. Si ya está en otra cosa, solo queda escrito.
             if (fase is Fase.Reposo or Fase.Seguimiento) Respuesta(r);
@@ -91,10 +95,9 @@ public sealed class Controlador
         cerebro.Precalentar();
         _ = PrepararOido();
 
-        var marca = Path.Combine(Config.Datos, "bienvenida.txt");
-        if (!File.Exists(marca))
+        // Primera vez: la barra abre el onboarding (cuenta, nombre, voz). La marca se escribe al terminarlo.
+        if (!File.Exists(Path.Combine(Config.Datos, "bienvenida.txt")))
         {
-            File.WriteAllText(marca, DateTime.Now.ToString("s"));
             barra.Mostrar();
             barra.Enviar(new { tipo = "bienvenida" });
         }
@@ -888,7 +891,8 @@ public sealed class Controlador
     {
         Registro.Log("PATCH se cerró");
         barra.Cerrar();
-        cerebro.Cerrar();
+        claude.Cerrar();
+        chatgpt.Cerrar();
         boca.Dispose();
         oido.Dispose();
         try { transcriptor.Dispose(); } catch { }
@@ -931,8 +935,19 @@ public sealed class Controlador
                 break;
             case "config":
                 var clave = S("clave");
-                if (new[] { "asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco", "volumen_automatico", "whisper", "oido" }.Contains(clave))
+                if (new[] { "asistente", "usuario", "modelo", "motor", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco", "volumen_automatico", "whisper", "oido" }.Contains(clave))
                 {
+                    if (clave == "motor")
+                    {
+                        if (!Cuentas.Valido(S("valor")) || S("valor") == Config.Motor) break;
+                        cerebro.Cancelar();
+                        Config.Poner("motor", S("valor"));
+                        Registro.Log($"Ahora piensa con {(Config.Motor == "chatgpt" ? "ChatGPT" : "Claude")}");
+                        if (fase == Fase.Pensando) VolverAReposo();
+                        cerebro.Precalentar();
+                        EnviarConfig();
+                        break;
+                    }
                     Config.Poner(clave, S("valor"));
                     if (clave is "whisper" or "oido" && Transcriptor.Activo) _ = PrepararWhisper(rehacer: true);
                     if (clave is "cancelar_eco" or "volumen_automatico" && microfonoListo)
@@ -997,6 +1012,18 @@ public sealed class Controlador
                     Consultar(Comandos.Orden(cp, cp.Nombre), null, cp.Nombre, $"Comando «{cp.Nombre}»…");
                 }
                 break;
+            case "cuentas": _ = EnviarCuentas(); break;
+            case "login":
+            case "instalar":
+                if (!Cuentas.Valido(S("proveedor"))) break;
+                if (S("tipo") == "login") Cuentas.IniciarSesion(S("proveedor")); else Cuentas.Instalar(S("proveedor"));
+                _ = VigilarCuenta(S("proveedor"));
+                break;
+            case "onboardingListo":
+                File.WriteAllText(Path.Combine(Config.Datos, "bienvenida.txt"), DateTime.Now.ToString("s"));
+                Registro.Log($"Onboarding terminado (piensa con {Config.Motor})");
+                EnviarConfig();
+                break;
             case "calibrar": EmpezarCalibracion(); break;
             case "probarVoz": Decir($"Hola, soy {Config.Asistente}. Así sueno.", false); break;
             case "nuevaConversacion":
@@ -1025,7 +1052,7 @@ public sealed class Controlador
         barra.Enviar(new
         {
             tipo = "config",
-            asistente = Config.Asistente, usuario = Config.Usuario, modelo = Config.Modelo, voz = Config.VozActiva,
+            asistente = Config.Asistente, usuario = Config.Usuario, modelo = Config.Modelo, motor = Config.Motor, voz = Config.VozActiva,
             microfono = microfonoListo, microfonoConfig = Config.Microfono, escucharNombre = Config.EscucharNombre,
             vozEdge = Config.VozEdge, alias = Config.Alias, inicioWindows = InicioActivo, atajo = "Ctrl+Alt+P",
             cancelarEco = Config.Valor("cancelar_eco", "on") != "off", volumenAutomatico = Config.Valor("volumen_automatico", "on") != "off",
@@ -1036,6 +1063,33 @@ public sealed class Controlador
             modelos = new[] { new { id = "haiku", nombre = "Haiku (el más rápido)" }, new { id = "sonnet", nombre = "Sonnet (equilibrado)" }, new { id = "opus", nombre = "Opus (el más capaz)" } },
         });
         bandeja?.Actualizar();
+    }
+
+    /// <summary>Le dice a la barra si hay sesión de Claude y de ChatGPT (para el onboarding y los ajustes).</summary>
+    async Task<bool[]> EnviarCuentas()
+    {
+        var c = Cuentas.Consultar("claude");
+        var g = Cuentas.Consultar("chatgpt");
+        await Task.WhenAll(c, g);
+        object Json(Cuentas.Estado e) => new { instalado = e.Instalado, conectado = e.Conectado, detalle = e.Detalle };
+        await ui.InvokeAsync(() => barra.Enviar(new { tipo = "cuentas", motor = Config.Motor, claude = Json(c.Result), chatgpt = Json(g.Result) }));
+        return new[] { c.Result.Conectado, g.Result.Conectado };
+    }
+
+    /// <summary>Tras abrir un inicio de sesión o una instalación, revisa cada 3 s (hasta 6 min) hasta que quede conectado.</summary>
+    async Task VigilarCuenta(string proveedor)
+    {
+        var mia = ++vigilanciaCuentas;
+        for (int i = 0; i < 120 && mia == vigilanciaCuentas; i++)
+        {
+            await Task.Delay(3000);
+            var r = await EnviarCuentas();
+            if (r[proveedor == "chatgpt" ? 1 : 0])
+            {
+                Registro.Log($"Sesión lista ({proveedor})");
+                return;
+            }
+        }
     }
 
     void AgregarMensaje(string rol, string texto)

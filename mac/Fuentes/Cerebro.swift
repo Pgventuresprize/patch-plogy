@@ -66,7 +66,20 @@ struct Resultado {
 /// Mantiene UN proceso abierto (stream-json de entrada y salida) y le manda cada orden por la misma conexión:
 /// así cada turno arranca en ~1,5 s en vez de ~8 s. Una acción ya confirmada va en un proceso aparte con ese
 /// permiso exacto, y luego se reabre el proceso continuando la conversación. Todo corre en el hilo principal.
-final class Cerebro {
+/// Lo que el controlador necesita de un cerebro: Claude Code (Cerebro) o Codex con ChatGPT (CerebroCodex).
+protocol Motor: AnyObject {
+    var ocupado: Bool { get }
+    var alSuelta: ((Resultado) -> Void)? { get set }
+    func agregar(_ texto: String) -> Bool
+    func precalentar()
+    func nuevaConversacion()
+    func reconfigurar()
+    func cancelar()
+    func recordar(_ ds: [Denegado])
+    func preguntar(_ texto: String, permitir: [String], estado: @escaping (String) -> Void, fin: @escaping (Resultado) -> Void)
+}
+
+final class Cerebro: Motor {
     private(set) var sesion: String?
     private var ultimaVez = Date.distantPast
     private var vivo: Corrida?
@@ -229,14 +242,7 @@ final class Cerebro {
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = args
         p.currentDirectoryURL = URL(fileURLWithPath: Ajustes.carpeta)
-        var env = ProcessInfo.processInfo.environment
-        // Si PATCH se abrió desde otra sesión de Claude Code, hereda variables de esa sesión: no deben pasar a Claude.
-        let deSesion = try? NSRegularExpression(pattern:
-            "^(CLAUDECODE|CLAUDE_PID|CLAUDE_AGENT_SDK_VERSION|AI_AGENT|MCP_CONNECTION_NONBLOCKING|CLAUDE_CODE_(ENTRYPOINT|IGNORE_PERSISTED_TRUST|CHILD_.*|SESSION.*|MESSAGING.*|EMIT_STARTUP_TIMING|ENABLE_SDK_FILE_CHECKPOINTING|ENABLE_TASKS|QUESTION_PREVIEW_FORMAT|STARTUP_FAILURE_RESULTS|SSE_PORT))$")
-        for k in env.keys where deSesion?.firstMatch(in: k, range: NSRange(k.startIndex..., in: k)) != nil { env.removeValue(forKey: k) }
-        env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        env["PATCH_APP"] = "1"
-        p.environment = env
+        p.environment = Cerebro.entornoLimpio()
 
         let salida = Pipe(), entrada = Pipe(), errores = Pipe()
         p.standardOutput = salida
@@ -353,6 +359,18 @@ final class Cerebro {
         }
         var vistos = Set<String>()
         return r.filter { vistos.insert($0).inserted }
+    }
+
+    /// Variables para los programas que lanza la app (Claude Code, Codex): PATH completo y sin las de otra sesión.
+    /// Si PATCH se abrió desde otra sesión de Claude Code, hereda variables de esa sesión: no deben pasar a Claude.
+    static func entornoLimpio() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let deSesion = try? NSRegularExpression(pattern:
+            "^(CLAUDECODE|CLAUDE_PID|CLAUDE_AGENT_SDK_VERSION|AI_AGENT|MCP_CONNECTION_NONBLOCKING|CLAUDE_CODE_(ENTRYPOINT|IGNORE_PERSISTED_TRUST|CHILD_.*|SESSION.*|MESSAGING.*|EMIT_STARTUP_TIMING|ENABLE_SDK_FILE_CHECKPOINTING|ENABLE_TASKS|QUESTION_PREVIEW_FORMAT|STARTUP_FAILURE_RESULTS|SSE_PORT))$")
+        for k in env.keys where deSesion?.firstMatch(in: k, range: NSRange(k.startIndex..., in: k)) != nil { env.removeValue(forKey: k) }
+        env["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATCH_APP"] = "1"
+        return env
     }
 
     static func rutaClaude() -> String? {

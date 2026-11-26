@@ -85,6 +85,79 @@
     <div class="pista" id="pista">Micrófono activo · di «Patch»</div>
   </footer>
 
+  <!-- Onboarding: primera vez (o desde Ajustes). Cuenta, nombre, voz y forma de hablarle. -->
+  <section class="onboarding" id="onboarding" hidden>
+    <div class="ob-barra">
+      <div class="ob-pasos" id="obPasos" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <button class="enlace ob-saltar" id="obSaltar">Saltar</button>
+    </div>
+
+    <div class="ob-paso" data-paso="0">
+      <img class="ob-logo" src="marca/plogy-white.svg" alt="Plogy">
+      <p class="ob-eyebrow">PATCH BY PLOGY</p>
+      <h1 class="ob-titulo">Tu asistente, en tu computador.</h1>
+      <p class="ob-texto">Háblale o escríbele para buscar archivos, ordenar tus carpetas, investigar un tema o revisar tu agenda.</p>
+      <ul class="ob-puntos">
+        <li><b>Corre en tu computador.</b> Tus archivos, tu voz y tus notas se quedan aquí.</li>
+        <li><b>Sin claves ni configuraciones raras.</b> Inicias sesión con la cuenta de Claude o de ChatGPT que ya tienes.</li>
+        <li><b>Tú decides.</b> Nunca borra, envía ni comparte sin tu confirmación escrita.</li>
+      </ul>
+      <div class="ob-botones"><button class="boton principal ob-siguiente">Empezar</button></div>
+    </div>
+
+    <div class="ob-paso" data-paso="1" hidden>
+      <p class="ob-eyebrow">PASO 1 DE 3</p>
+      <h2 class="ob-titulo">Conecta tu cuenta</h2>
+      <p class="ob-texto">PATCH piensa con tu suscripción de Claude o de ChatGPT. Inicia sesión una vez y listo.</p>
+      <div class="cuentas">
+        <div class="cuenta" data-proveedor="claude">
+          <div class="cuenta-cabecera"><b>Claude</b><span class="cuenta-estado" data-estado>Revisando…</span></div>
+          <p class="cuenta-texto">Con Claude Code. Recomendado: también ordena y mueve tus archivos, siempre con tu permiso.</p>
+          <div class="cuenta-botones"><button class="boton" data-accion>Iniciar sesión</button><button class="boton principal" data-usar hidden>Usar Claude</button><span class="cuenta-elegida" data-elegida hidden>En uso</span></div>
+        </div>
+        <div class="cuenta" data-proveedor="chatgpt">
+          <div class="cuenta-cabecera"><b>ChatGPT</b><span class="cuenta-estado" data-estado>Revisando…</span></div>
+          <p class="cuenta-texto">Con Codex. Responde, busca en internet, lee tus archivos e investiga. Ordenar o borrar archivos por ahora necesita Claude.</p>
+          <div class="cuenta-botones"><button class="boton" data-accion>Iniciar sesión</button><button class="boton principal" data-usar hidden>Usar ChatGPT</button><span class="cuenta-elegida" data-elegida hidden>En uso</span></div>
+        </div>
+      </div>
+      <p class="nota">Se abre una ventanita y tu navegador para iniciar sesión. PATCH no ve ni guarda tu contraseña: la sesión queda en el programa de tu cuenta, en este computador.</p>
+      <div class="ob-botones"><button class="boton ob-atras">Atrás</button><button class="boton principal ob-siguiente" id="obCuentaSiguiente" disabled>Continuar</button></div>
+    </div>
+
+    <div class="ob-paso" data-paso="2" hidden>
+      <p class="ob-eyebrow">PASO 2 DE 3</p>
+      <h2 class="ob-titulo">Hazlo tuyo</h2>
+      <p class="ob-texto">Ponle nombre a tu asistente y dile cómo llamarte.</p>
+      <label class="campo"><span>Nombre del asistente</span><input id="obAsistente" maxlength="24" placeholder="Patch"><small>Se activa cuando dices este nombre. Funcionan mejor los de dos o tres sílabas y poco comunes.</small></label>
+      <label class="campo"><span>¿Cómo te llama a ti?</span><input id="obUsuario" maxlength="30" placeholder="Tu nombre"></label>
+      <label class="campo" id="obCampoVoz"><span>Su voz</span><div class="fila"><select id="obVoz"></select><button class="boton" id="obProbarVoz">Probar</button></div></label>
+      <div class="ob-botones"><button class="boton ob-atras">Atrás</button><button class="boton principal ob-siguiente">Continuar</button></div>
+    </div>
+
+    <div class="ob-paso" data-paso="3" hidden>
+      <p class="ob-eyebrow">PASO 3 DE 3</p>
+      <h2 class="ob-titulo">Háblale como quieras</h2>
+      <p class="ob-texto">Di su nombre y lo que necesitas, usa el atajo <b class="atajo2">Ctrl+Alt+P</b>, o escríbele en la barra.</p>
+      <label class="interruptor"><input type="checkbox" id="obEscuchar"><span>Escuchar cuando digo su nombre</span></label>
+      <label class="interruptor"><input type="checkbox" id="obLeer"><span>Leer las respuestas en voz alta</span></label>
+      <div class="campo">
+        <span>Enséñale cómo suena su nombre</span>
+        <small>Dilo tres veces para que te reconozca mejor. Puedes hacerlo después en Ajustes.</small>
+        <div class="calibracion"><button class="boton" id="obCalibrar">Calibrar</button><div class="cal-estado" id="obCalEstado"></div></div>
+      </div>
+      <div class="ob-botones"><button class="boton ob-atras">Atrás</button><button class="boton principal ob-siguiente">Continuar</button></div>
+    </div>
+
+    <div class="ob-paso ob-final" data-paso="4" hidden>
+      <div class="ob-esfera" aria-hidden="true"></div>
+      <h2 class="ob-titulo" id="obFinalTitulo">Todo listo.</h2>
+      <p class="ob-texto" id="obFinalTexto"></p>
+      <div class="chips ob-resumen" id="obResumen"></div>
+      <div class="ob-botones"><button class="boton principal" id="obTerminar">Empezar</button></div>
+    </div>
+  </section>
+
   <!-- Ajustes -->
   <section class="ajustes" id="ajustes" hidden>
     <div class="ajustes-cabecera">
@@ -117,11 +190,16 @@
       </div>
 
       <h3>Inteligencia</h3>
-      <label class="campo">
+      <div class="campo">
+        <span>Cuenta</span>
+        <div class="cuenta-actual"><span id="cfgMotorTexto">Claude</span><button class="enlace" id="btnCambiarCuenta">Cambiar</button></div>
+      </div>
+      <label class="campo" id="campoModelo">
         <span>Modelo</span>
         <select id="cfgModelo"></select>
         <small>Haiku responde más rápido; Opus piensa mejor las tareas difíciles.</small>
       </label>
+      <p class="nota" id="notaModeloChatGPT" hidden>Usa el modelo de tu cuenta de ChatGPT. Con ChatGPT, PATCH responde, busca, lee e investiga; para ordenar o borrar archivos, conecta Claude.</p>
 
       <div id="seccionComandos" hidden>
         <h3>Comandos</h3>
@@ -177,8 +255,9 @@
         <button class="enlace" data-abrir="carpeta">Carpeta de PATCH</button>
         <button class="enlace" data-abrir="comandos" id="lnkComandos" hidden>Carpeta de comandos</button>
         <button class="enlace" id="btnNueva">Empezar una conversación nueva</button>
+        <button class="enlace" id="btnOnboarding">Repetir la configuración inicial</button>
       </div>
-      <p class="version">PATCH by Plogy</p>
+      <p class="version"><img src="marca/plogy-white.svg" alt="Plogy"><span>PATCH by Plogy</span></p>
     </div>
   </section>
 

@@ -117,6 +117,44 @@ Un comando es una frase («buenos días») que dispara varios pasos de una vez: 
 - Medido: «buenos días» (hora + clima de Bogotá + agenda) en 10 s con Sonnet, sin permisos. Crear «me voy» por voz: 7 s.
 - La app de Mac todavía no los reconoce (la sección de Ajustes no se muestra ahí); los archivos sirven igual.
 
+## Onboarding y cuentas: Claude o ChatGPT, todo local (rama `marca-plogy-02`, 2026-11-26)
+La primera vez (o desde Ajustes › Más › «Repetir la configuración inicial») la barra abre un onboarding de cinco
+pasos: bienvenida, **conectar la cuenta**, nombre del asistente y del usuario con su voz, forma de hablarle
+(escuchar el nombre, leer en voz alta, calibrar) y resumen. Al terminar se escribe la marca de bienvenida
+(`%LOCALAPPDATA%\PATCH\bienvenida.txt` en Windows, `bienvenidaHecha` en Mac); si se cierra antes, vuelve a salir.
+
+- **Sin claves de API.** PATCH no guarda credenciales: pregunta a cada programa si hay sesión y abre su propio inicio
+  de sesión en una ventanita (Windows: consola; Mac: un `.command` en la Terminal), que se completa en el navegador.
+  - Claude: `claude auth status --json` (estado) y `claude auth login --claudeai` (iniciar sesión).
+  - ChatGPT: `codex login status` (escribe "Logged in using ChatGPT" en la salida de errores) y `codex login`.
+  - Si el programa no está instalado, el botón dice «Instalar»: Claude con su instalador oficial
+    (`irm https://claude.ai/install.ps1 | iex` / `curl -fsSL https://claude.ai/install.sh | bash`), Codex con
+    `npm install -g @openai/codex` (o Homebrew en Mac), o la página de Codex si no hay npm.
+  - Tras abrir el inicio de sesión, la app revisa cada 3 s (hasta 6 min) y la tarjeta pasa sola a «Conectado».
+- **`motor=` en patch-config.txt** elige con qué cuenta piensa la app: `claude` (por defecto) o `chatgpt`.
+  Mensajes de la barra: `cuentas` (pide el estado), `login`/`instalar` con `proveedor`, `config` con `clave=motor`,
+  `onboardingListo`. La app responde `{tipo:"cuentas", motor, claude:{instalado,conectado,detalle}, chatgpt:{…}}`.
+- **ChatGPT corre en modo seguro** (`CerebroCodex`, en Windows y Mac): `codex exec --json --skip-git-repo-check
+  -s workspace-write -C <carpeta> -c web_search="live"`, una orden por proceso, y las siguientes con
+  `codex exec … resume <thread_id>`. Lee todo el computador, busca en internet y solo escribe dentro de la carpeta de
+  PATCH (probado: crear en `notas\` sí, en Descargas queda bloqueado). Como Codex no puede pedir permisos a mitad
+  desde aquí, **mover, ordenar o borrar archivos del usuario y enviar correos siguen siendo de Claude**; el modelo lo
+  explica si se lo piden. No suma mensajes a mitad de tarea (van con la siguiente orden) y tarda más que Claude
+  (~60–75 s en la primera respuesta, porque arranca un proceso por orden). `modelo_chatgpt=` (opcional) fija el modelo.
+- Probado de punta a punta en Windows con `PATCH.exe --probar-cerebro chatgpt "¿Cuántos PDF hay en mis Descargas?" "¿Y cuál es el más pesado?"`:
+  respondió y recordó el contexto en el segundo turno.
+
+## Marca (brand kit 02 de Plogy)
+Todo lo visual sale del brand kit 02 (`C:\clipwork\brandkit02` en el equipo de Juanfra; copia en el repo):
+- `ui/estilo.css`: tokens `--plogy-*` del kit, tema oscuro sobre tinta `#171310`, Plogy Display (`ui/marca/`) en títulos,
+  nombre y botones, Helvetica Neue → Arial en el texto, botones en píldora naranja con texto tinta (contraste del kit),
+  radios 12/24/999, la esfera coral→violeta como avatar y en los puntos de «pensando».
+- `ui/marca/`: logos SVG (color, blanco, símbolo) y Plogy Display (WOFF2 y TTF).
+- Windows: `windows/PATCH/Marca.cs` (colores, degradado, fuente incrustada), `Marca/plogy.ico` (esfera) como ícono del
+  .exe y de la bandeja. Mac: `mac/Fuentes/Marca.swift` y `mac/Recursos/AppIcon-1024.png` (esfera sobre tinta), que
+  `construir.sh` convierte en `AppIcon.icns`.
+- Logos de terceros: el onboarding nombra a Claude y ChatGPT solo con texto, sin usar sus logos.
+
 ## Menos permisos (lo que aprendimos el 2026-11-25)
 En modo sin pantalla, Claude Code **rechaza siempre** en PowerShell las variables (`$env:USERPROFILE`, `$HOME`), los
 bloques `{ }` (`ForEach-Object`, `Where-Object { … }`), `$_`, las llamadas `[Clase]::Metodo()` y las asignaciones, aunque
@@ -179,6 +217,13 @@ Para manejar la barra desde una prueba: abrir la app con `WEBVIEW2_ADDITIONAL_BR
 y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (por ejemplo, `Puente.enviar({...})`).
 `PATCH.exe --salir` cierra la copia abierta de forma ordenada y devuelve el borde de la pantalla.
 
+Sin ventana y sin chocar con la copia abierta (escriben el resultado en `patch.log` y salen):
+```
+PATCH.exe --probar-cuentas
+PATCH.exe --probar-cerebro chatgpt "orden" ["segunda orden"]
+PATCH.exe --probar-cerebro claude "orden"
+```
+
 ## Pendiente
 - Decidir cómo reciben los estudiantes el .zip (releases públicos o entregado con la carpeta).
 - Medir la detección del nombre con voces reales y ruido de oficina, y ajustar `SeguridadMinima` con lo que muestre
@@ -192,3 +237,5 @@ y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (po
   Spotify no lo hizo sonar solo).
 - Lo que queda de espera es el trabajo real del modelo (búsquedas, lecturas). Con Haiku es más rápido.
 - Codex: los hooks se generan, pero no se ha probado.
+- ChatGPT en la app: dar permisos a mitad (como Claude) para que también pueda ordenar archivos con confirmación; hoy
+  corre en modo seguro. Probar el onboarding en un Mac real (el inicio de sesión abre la Terminal con un `.command`).
