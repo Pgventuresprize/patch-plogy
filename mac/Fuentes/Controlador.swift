@@ -105,7 +105,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             vista.fase = .hablando
             vista.titulo = Ajustes.nombre
-            vista.texto = "Listo. Di «\(Ajustes.nombre)», da dos palmadas o usa ⌃⌥J."
+            vista.texto = "Listo. Di «\(Ajustes.nombre)», da dos palmadas o usa ⌘⌥P."
             vista.botones = .ninguno
             vista.detalle = nil
             panel.mostrar()
@@ -427,7 +427,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Registro.log("Descansando: voz cortada y micrófono cerrado")
         vista.fase = .hablando
         vista.titulo = "Descansando"
-        vista.texto = "No escucho nada. Para despertarme: ⌃⌥J o el icono de la barra de menú."
+        vista.texto = "No escucho nada. Para despertarme: ⌘⌥P o el icono de la barra de menú."
         vista.detalle = nil
         vista.botones = .ninguno
         panel.mostrar()
@@ -525,7 +525,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         barra.enviar([
             "tipo": "config", "asistente": Ajustes.nombre, "usuario": Ajustes.usuario, "modelo": Ajustes.modelo,
             "voz": ConfigPatch.vozActiva, "microfono": microfonoListo, "escucharNombre": Ajustes.escucharNombre,
-            "vozEdge": ConfigPatch.valor("voz_edge"), "alias": Ajustes.alias, "inicioWindows": Inicio.activo, "atajo": "⌃⌥J",
+            "vozEdge": ConfigPatch.valor("voz_edge"), "alias": Ajustes.alias, "inicioWindows": Inicio.activo, "atajo": "⌘⌥P",
             "cancelarEco": ConfigPatch.valor("cancelar_eco") != "off",
             "voces": voces,
             "modelos": [["id": "haiku", "nombre": "Haiku (el más rápido)"], ["id": "sonnet", "nombre": "Sonnet (equilibrado)"],
@@ -660,7 +660,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menuEstado.isEnabled = false
         menu.addItem(menuEstado)
         menu.addItem(accion("Abrir la barra lateral", #selector(abrirBarraMenu)))
-        menu.addItem(accion("Hablar ahora   ⌃⌥J", #selector(hablarAhora)))
+        menu.addItem(accion("Hablar ahora   ⌘⌥P", #selector(hablarAhora)))
         menu.addItem(.separator())
         menu.addItem(accion("Micrófono activo", #selector(alternarMicrofono), marcado: Ajustes.microfono))
         menu.addItem(accion("Escuchar «\(nombre)»", #selector(alternarNombre), marcado: Ajustes.escucharNombre))
@@ -705,7 +705,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func textoEstado() -> String {
         guard microfonoListo else { return Ajustes.microfono ? "Sin micrófono" : "Micrófono bloqueado (solo chat)" }
         switch fase {
-        case .reposo: return Ajustes.escucharNombre ? "Esperando «\(Ajustes.nombre)»" : "En pausa (usa ⌃⌥J o palmadas)"
+        case .reposo: return Ajustes.escucharNombre ? "Esperando «\(Ajustes.nombre)»" : "En pausa (usa ⌘⌥P o palmadas)"
         case .escuchando, .seguimiento: return "Escuchando…"
         case .pensando: return "Pensando…"
         case .hablando: return "Hablando…"

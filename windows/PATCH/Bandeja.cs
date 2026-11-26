@@ -25,7 +25,7 @@ public sealed class Bandeja : IDisposable
         icono = new NotifyIcon
         {
             Icon = Dibujar(),
-            Text = "PATCH — di el nombre de tu asistente o Ctrl+Alt+Espacio",
+            Text = "PATCH — di el nombre de tu asistente o Ctrl+Alt+P",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -36,7 +36,7 @@ public sealed class Bandeja : IDisposable
     public void Actualizar()
     {
         microfono.Checked = c.MicrofonoActivo;
-        icono.Text = c.MicrofonoActivo ? $"PATCH — di «{Config.Asistente}» o Ctrl+Alt+Espacio" : "PATCH — descansando (Ctrl+Alt+Espacio para despertarlo)";
+        icono.Text = c.MicrofonoActivo ? $"PATCH — di «{Config.Asistente}» o Ctrl+Alt+P" : "PATCH — descansando (Ctrl+Alt+P para despertarlo)";
     }
 
     /// <summary>Círculo naranja de Plogy con una P blanca.</summary>

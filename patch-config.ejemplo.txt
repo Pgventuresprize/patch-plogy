@@ -9,3 +9,6 @@ escuchar_nombre=on
 alias=
 cancelar_eco=on
 volumen_automatico=on
+whisper=on
+vocabulario=
+oido=auto

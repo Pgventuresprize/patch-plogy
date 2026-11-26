@@ -6,34 +6,93 @@ Para quien siga desarrollando PATCH. Explica cómo está armada la app, cómo se
 1. La app escucha todo el tiempo **dentro del computador** (no sale audio). Cuando una frase empieza por el nombre del
    asistente ("Patch, …" u "Oye Patch, …"), aparece la ventanita: sobre la barra de tareas en Windows, bajo la barra de
    menú en Mac.
-2. Lo que viene después del nombre es la orden. Se manda a Claude Code sin ventana, en la carpeta del proyecto, con el
+2. **Oído fino (Windows):** Vosk solo sirve para detectar el nombre a tiempo. Cuando hay una orden, su audio pasa por
+   Whisper (`Transcriptor.cs`, whisper.cpp dentro del PC) con una pista que trae el nombre del asistente, el del usuario
+   y palabras frecuentes (Spotify, Drive, Gmail…; se amplía con `vocabulario=`). Whisper escribe bien lo que Vosk
+   confunde ("Patch" en vez de "pac", "MCP" en vez de "eme sepe") y **confirma el nombre**: si la frase se activó por el
+   nombre y Whisper no lo oye ("Paco, ven a comer"), es una falsa alarma y se ignora. Ver "Oído fino" más abajo.
+3. Lo que viene después del nombre es la orden. Se manda a Claude Code sin ventana, en la carpeta del proyecto, con el
    modelo elegido y sin las herramientas del navegador del usuario. **Claude queda abierto entre órdenes**
    (`claude -p --input-format stream-json --output-format stream-json`), precalentado desde que arranca la app, y sin los
    hooks de voz del proyecto (la app ya habla). Así cada turno arranca en ~1,5 s en vez de ~8 s. Medido con Sonnet:
    "busca el contrato y dime la fecha" tardaba 26 s y ahora 8,8 s; una pregunta de seguimiento tarda 1,4 s.
    Una acción ya confirmada va en un proceso aparte con ese permiso exacto y luego se reabre el proceso continuando la
    conversación. La app quita del entorno las variables de otra sesión de Claude Code, por si la abrió un agente.
-3. La respuesta se muestra en la ventanita y se dice en voz alta. Solo se sigue escuchando **sin el nombre** si PATCH
+4. La respuesta se muestra en la ventanita y se dice en voz alta. Solo se sigue escuchando **sin el nombre** si PATCH
    hizo una pregunta, si espera un permiso o si la barra está abierta (7 a 10 s). En Windows, además, una frase sin el
    nombre se descarta si Vosk la oyó con seguridad baja (< 0,62): así la conversación de fondo no se le manda como
    orden (pasó en la primera prueba real).
-4. **Descanso:** "silencio", "descansa", "cállate", "duérmete", "deja de escuchar"… los resuelve la app sin Claude:
+5. **Descanso:** "silencio", "descansa", "cállate", "duérmete", "deja de escuchar"… los resuelve la app sin Claude:
    corta la voz, cancela lo que hacía y cierra el micrófono. Se despierta con el atajo (que además queda escuchando)
    o con el botón de micrófono. **Mientras habla sigue oyendo**: una palabra de parada que no esté en lo que él mismo
    dice lo interrumpe.
-5. **Cancelación de eco:** en Windows, el micrófono pasa por el *Voice Capture DSP* de Windows (`Eco.cs`): resta lo que
+6. **Cancelación de eco:** en Windows, el micrófono pasa por el *Voice Capture DSP* de Windows (`Eco.cs`): resta lo que
    suena por los parlantes, suprime ruido y sube la voz (control automático de volumen). Necesita una salida de audio
    activa (si no, se detiene con 0x87CC000A), así que reproduce silencio mientras escucha. Si falla, se usa el
    micrófono normal. En Mac se usa el procesamiento de voz de `AVAudioEngine`. Ambas cosas se apagan en Ajustes.
-6. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
+7. Tocar la ventanita abre la barra lateral (chat, micrófono, voz, modelo y ajustes). En Windows la barra reserva el
    borde derecho y las demás ventanas se reacomodan. En Mac flota encima, porque macOS no tiene forma oficial de
    reservar un borde.
-7. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
+8. Permisos: si Claude Code necesita algo que no está aprobado, la app lo pide. Lo normal se autoriza con un "sí" de voz.
    **Borrar, enviar y compartir exigen escribir BORRAR, ENVIAR o COMPARTIR.** Solo se autoriza ese comando exacto y una
    sola vez. Borrar siempre manda a la papelera (`scripts/papelera.*`).
    Un permiso normal aprobado con "sí" queda aprobado hasta cerrar la app (comandos exactos; nunca Write/Edit sin
    ruta, ni borrar, enviar o compartir). Un permiso sin responder sigue vigente 5 minutos: un "sí" escrito en la barra
    lo aprueba aunque la ventanita ya se haya cerrado.
+
+## Oído fino con Whisper (Windows, rama `oido-whisper`, 2026-11-25)
+El registro de la primera prueba real mostró que Vosk (modelo pequeño de 38 MB) solo conoce palabras del diccionario
+español: nunca escribió "Patch" (oyó "pac", "pack", "paco", "pues", "prats") y deformaba las órdenes ("a través de un
+MCP" → "a través de un insípido"; una cita del calendario se canceló a partir de una orden revuelta). Agregar "Oye" o
+"Hola" antes del nombre no ayuda: ya se aceptaba y Vosk oyó "oye pues".
+
+Ahora Vosk sigue escuchando siempre (rápido, dentro del PC) y Whisper vuelve a transcribir cada orden:
+- `Oido.cs` guarda el audio de la frase en curso (desde 1,2 s antes de la primera palabra que muestra Vosk).
+- `Transcriptor.cs` corre whisper.cpp con Whisper.net. Elige la tarjeta gráfica por Vulkan (la dedicada si hay, si no
+  la integrada; `whisper_gpu=` la fija a mano) con `ggml-large-v3-turbo-q5_0` (574 MB). Sin tarjeta, usa el procesador
+  con `ggml-small-q5_1` (190 MB). El modelo se baja la primera vez a `%LOCALAPPDATA%\PATCH\modelos\whisper`.
+- `Controlador.EnviarOido` reemplaza la orden de Vosk por la de Whisper. Si la frase se activó por el nombre y Whisper no
+  lo oye (comparación estricta, sin las confusiones de Vosk), es una falsa alarma. Si solo dijeron el nombre,
+  `VerificarSoloNombre` hace lo mismo antes de tomar la frase siguiente como orden.
+- Se quitan las alucinaciones típicas de Whisper en ruido ("Subtítulos por la comunidad de Amara.org") y las frases
+  repetidas en bucle.
+- Se apaga en Ajustes > Oído > "Oído fino" (`whisper=off`). Sin Whisper listo, todo sigue como antes con Vosk.
+
+**Groq para los equipos lentos.** El mismo modelo (whisper-large-v3-turbo) corre en Groq con la clave gratis de cada
+estudiante (console.groq.com/keys; unos 2.000 pedidos al día y 20 por minuto en el plan gratis, según terceros). Así
+no hay un límite compartido entre todos ni un servidor de Plogy. `oido=` elige el motor:
+- `auto` (por defecto): el local si tarda 1 s o menos por frase (se mide al arrancar); si no, Groq. Sin tarjeta
+  gráfica y con clave, ni siquiera se baja el modelo local.
+- `local`: nunca sale audio del PC. `groq`: siempre Groq.
+- Si Groq falla (clave mala, límite, sin internet), se usa el local; si no había local, se carga.
+- La clave **no** va en `patch-config.txt` (Claude lo lee en cada conversación): la barra se la pasa directo a la app,
+  que la guarda en `%LOCALAPPDATA%\PATCH\groq.clave` cifrada con DPAPI (solo la cuenta de Windows del usuario la abre).
+  Nunca se escribe en el registro ni se devuelve a la barra.
+- **Conversación activa:** con la barra lateral abierta, una frase sin el nombre ya no se descarta por la seguridad
+  baja de Vosk (que oye mal justo las palabras que no conoce): pasa al oído fino y solo se ignora si Whisper no oye habla.
+  Con la barra cerrada sigue el filtro de seguridad (< 0,62), para que la conversación de fondo no se cuele.
+- **Atajo:** Ctrl+Alt+P en Windows y ⌘⌥P en Mac. Antes era Ctrl+Alt+Espacio, pero la app de escritorio de Claude lo usa
+  para su entrada rápida y PATCH no lo podía registrar ("No pude registrar el atajo" en el registro).
+
+Medido en este PC (Ryzen 7 260, Radeon 780M integrada, RTX 5060), 15 frases con 3 voces (es-CO y es-MX):
+
+| | "Patch" bien escrito | Órdenes bien | Tiempo por frase |
+|---|---|---|---|
+| Vosk (antes) | 0 de 15 | 10 de 15 | — |
+| Whisper turbo, RTX 5060 | 15 de 15 | 15 de 15 | ~0,5 s |
+| Whisper turbo, Radeon integrada | 15 de 15 | 15 de 15 | ~1,5 s |
+| Whisper small, solo procesador | 15 de 15 | ~10 de 15 | ~3,5 s |
+| Groq (desde Colombia, clave gratis) | 15 de 15 | 15 de 15 | 0,35-0,45 s dentro de la app con la conexión abierta; 0,8 s de mediana y hasta 2,1 s en pruebas sueltas |
+
+**No achicar la ventana de audio** (`WithAudioContextSize`) para ganar velocidad: con 768 bajaba a 0,4 s, pero en la app
+escribió "¿qué oráis?" por "¿qué hora es?" y repitió frases enteras hasta 10 veces.
+
+Para afinar con voces reales: abrir la app con `PATCH_GUARDAR_AUDIO=C:\carpeta` guarda cada audio que pasa por Whisper
+como WAV, y el registro anota `Whisper (ms): «…» · Vosk: «…»` y cada `Falsa alarma`.
+
+**Smart App Control:** en este PC está encendido y bloqueó la compilación Release recién hecha ("An Application
+Control policy has blocked this file"), no la Debug ni la versión instalada. Pasa con programas sin firma digital que
+Windows no conoce. Antes de entregarla a estudiantes hay que firmar la app (por ejemplo, Azure Trusted Signing).
 
 ## Menos permisos (lo que aprendimos el 2026-11-25)
 En modo sin pantalla, Claude Code **rechaza siempre** en PowerShell las variables (`$env:USERPROFILE`, `$HOME`), los
@@ -55,7 +114,7 @@ archivos) pasó de 6 permisos y ningún archivo movido a 0 permisos.
 | Ventanita | `Pildora.cs` (no se activa, no roba el foco) | `Pildora.swift` |
 | Barra lateral | `BarraLateral.cs` (WebView2 + reserva de borde con AppBar) | `BarraLateral.swift` (WKWebView) |
 | Interfaz | `ui/` (compartida) | `ui/` (se copia dentro de PATCH.app) |
-| Atajo | Ctrl+Alt+Espacio | ⌃⌥J (y dos palmadas) |
+| Atajo | Ctrl+Alt+P | ⌘⌥P (y dos palmadas) |
 | Registro | `%LOCALAPPDATA%\PATCH\patch.log` | `~/Library/Logs/PATCH.log` |
 
 La configuración compartida (nombre, usuario, modelo, voz, micrófono, alias) vive en `patch-config.txt`. Si Claude
@@ -98,9 +157,8 @@ y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (po
 - Medir la detección del nombre con voces reales y ruido de oficina, y ajustar `SeguridadMinima` con lo que muestre
   el registro ("Frase sin nombre aceptada/IGNORADA (seguridad …)").
 - Probar la cancelación de eco con sonido real (con el volumen del PC apagado no se pudo comprobar acústicamente).
-- Si las órdenes se siguen entendiendo mal: segunda pasada con Whisper como servidor residente (`whisper.cpp`).
-  Whisper "small" transcribe muy bien, pero desde la línea de comandos tarda 46 s en este procesador porque carga el
-  modelo cada vez.
+- Oído fino: medir con voces reales y ruido de oficina; llevarlo a Mac (whisper.cpp con Metal); decidir si los
+  estudiantes reciben el modelo dentro del .zip o se descarga la primera vez (574 MB).
 - Mac: probar en un Mac real (hoy solo está compilada y empaquetada en GitHub Actions). Reacomodar ventanas al abrir
   la barra exigiría el permiso de Accesibilidad.
 - Lo que queda de espera es el trabajo real del modelo (búsquedas, lecturas). Con Haiku es más rápido.

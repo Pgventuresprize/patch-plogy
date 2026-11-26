@@ -1,6 +1,6 @@
 import Carbon
 
-/// Atajo global ⌃⌥J (no necesita permisos de accesibilidad).
+/// Atajo global ⌘⌥P (no necesita permisos de accesibilidad).
 final class AtajoGlobal {
     static var accion: (() -> Void)?
     private var ref: EventHotKeyRef?
@@ -13,8 +13,8 @@ final class AtajoGlobal {
             return noErr
         }, 1, &tipo, nil, nil)
         let id = EventHotKeyID(signature: OSType(0x4A52_5653), id: 1)
-        let estado = RegisterEventHotKey(UInt32(kVK_ANSI_J), UInt32(controlKey | optionKey), id,
+        let estado = RegisterEventHotKey(UInt32(kVK_ANSI_P), UInt32(cmdKey | optionKey), id,
                                          GetApplicationEventTarget(), 0, &ref)
-        if estado != noErr { Registro.log("No pude registrar el atajo ⌃⌥J (\(estado))") }
+        if estado != noErr { Registro.log("No pude registrar el atajo ⌘⌥P (\(estado))") }
     }
 }

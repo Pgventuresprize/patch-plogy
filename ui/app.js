@@ -57,7 +57,7 @@
     const p = $("pista");
     p.classList.remove("escuchando");
     p.textContent = cfg.microfono
-      ? (cfg.escucharNombre === false ? `Micrófono activo · usa ${cfg.atajo || "Ctrl+Alt+Espacio"} para hablarle` : `Micrófono activo · di «${cfg.asistente}» para hablarle`)
+      ? (cfg.escucharNombre === false ? `Micrófono activo · usa ${cfg.atajo || "Ctrl+Alt+P"} para hablarle` : `Micrófono activo · di «${cfg.asistente}» para hablarle`)
       : "Micrófono bloqueado · escríbeme";
   }
 
@@ -91,9 +91,18 @@
     // Opciones que la app no maneja (por ejemplo, en Mac el volumen automático lo hace el sistema)
     $("cfgEco").parentElement.hidden = cfg.cancelarEco === undefined;
     $("cfgAgc").parentElement.hidden = cfg.volumenAutomatico === undefined;
-    document.querySelectorAll(".atajo2").forEach((e) => (e.textContent = cfg.atajo || "Ctrl+Alt+Espacio"));
+    $("cfgWhisper").checked = cfg.whisper !== false;
+    $("cfgWhisper").parentElement.hidden = cfg.whisper === undefined;
+    $("oidoFino").hidden = cfg.whisper === undefined || cfg.whisper === false;
+    $("cfgOido").value = cfg.oido || "auto";
+    if (document.activeElement !== $("cfgGroq")) {
+      $("cfgGroq").value = "";
+      $("cfgGroq").placeholder = cfg.groqClave ? "Clave guardada ✓ (pega otra para cambiarla)" : "Pega aquí tu clave gsk_…";
+    }
+    $("oidoEstado").textContent = cfg.oidoEstado || "";
+    document.querySelectorAll(".atajo2").forEach((e) => (e.textContent = cfg.atajo || "Ctrl+Alt+P"));
     $("cfgInicio").checked = !!cfg.inicioWindows;
-    $("atajo").textContent = cfg.atajo || "Ctrl+Alt+Espacio";
+    $("atajo").textContent = cfg.atajo || "Ctrl+Alt+P";
     $("alias").innerHTML = (cfg.alias || []).map((a) => `<span>${escapar(a)}</span>`).join("");
   }
 
@@ -225,6 +234,15 @@
   $("cfgEscuchar").addEventListener("change", (e) => guardar("escuchar_nombre", e.target.checked ? "on" : "off"));
   $("cfgEco").addEventListener("change", (e) => guardar("cancelar_eco", e.target.checked ? "on" : "off"));
   $("cfgAgc").addEventListener("change", (e) => guardar("volumen_automatico", e.target.checked ? "on" : "off"));
+  $("cfgWhisper").addEventListener("change", (e) => guardar("whisper", e.target.checked ? "on" : "off"));
+  $("cfgOido").addEventListener("change", (e) => guardar("oido", e.target.value));
+  // La clave no pasa por patch-config.txt (Claude lee ese archivo): va directo a la app, que la guarda cifrada.
+  $("cfgGroq").addEventListener("change", (e) => {
+    const clave = e.target.value.trim();
+    e.target.value = "";
+    if (clave) { $("oidoEstado").textContent = "Probando la clave…"; Puente.enviar({ tipo: "groqClave", clave }); }
+  });
+  $("lnkGroq").onclick = (e) => { e.preventDefault(); Puente.enviar({ tipo: "abrir", que: "groq" }); };
   $("cfgInicio").addEventListener("change", (e) => Puente.enviar({ tipo: "inicioWindows", on: e.target.checked }));
   document.querySelectorAll("[data-abrir]").forEach((b) => (b.onclick = () => Puente.enviar({ tipo: "abrir", que: b.dataset.abrir })));
   $("btnNueva").onclick = () => { Puente.enviar({ tipo: "nuevaConversacion" }); $("ajustes").hidden = true; };

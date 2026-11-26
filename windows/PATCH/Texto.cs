@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -66,14 +66,40 @@ public static class Texto
     /// Si el texto empieza por el nombre ("Patch, …" u "Oye Patch, …"), devuelve lo que viene después; si no, null.
     /// El nombre tiene que abrir la frase: así "le puse un parche…" no lo activa.
     /// </summary>
-    public static string? DespuesDelNombre(string texto, string nombre, IReadOnlyList<string> alias)
+    public static string? DespuesDelNombre(string texto, string nombre, IReadOnlyList<string> alias) =>
+        BuscarNombre(texto, nombre, alias, false, null) ?? BuscarNombre(texto, nombre, alias, true, null);
+
+    /// <summary>
+    /// Igual que <see cref="DespuesDelNombre"/>, pero para lo que transcribió Whisper: sin las confusiones de Vosk
+    /// ("paco", "pack") y con una letra de diferencia como máximo ("Pach", "Path"). Así "Paco, ven a comer" no lo activa.
+    /// </summary>
+    public static string? DespuesDelNombreEstricto(string texto, string nombre)
+    {
+        var solo = new[] { string.Join("", Palabras(nombre)) };
+        return BuscarNombre(texto, nombre, solo, false, 1) ?? BuscarNombre(texto, nombre, solo, true, 1);
+    }
+
+    /// <summary>
+    /// Con <paramref name="separar"/>, prueba si el saludo y el nombre vienen juntos en la primera palabra, como a veces
+    /// los escribe Whisper ("Oyepatch, abre Spotify"). Solo se intenta si la forma normal no encontró el nombre.
+    /// </summary>
+    static string? BuscarNombre(string texto, string nombre, IReadOnlyList<string> alias, bool separar, int? tolerancia)
     {
         var p = Palabras(texto);
         if (p.Length == 0) return null;
         int i = Saludos.Contains(p[0]) ? 1 : 0;
+        int pegado = 0;
+        if (separar)
+        {
+            var sal = i == 0 ? Saludos.FirstOrDefault(s => p[0].Length > s.Length + 2 && p[0].StartsWith(s)) : null;
+            if (sal == null) return null;
+            p = new[] { sal, p[0][sal.Length..] }.Concat(p.Skip(1)).ToArray();
+            i = 1;
+            pegado = 1; // en el texto original son una sola palabra
+        }
         if (i >= p.Length) return null;
         var objetivo = string.Join("", Palabras(nombre));
-        int tol = objetivo.Length <= 4 ? 1 : 2;
+        int tol = tolerancia ?? (objetivo.Length <= 4 ? 1 : 2);
 
         int usadas = 0;
         foreach (var a in alias)
@@ -91,7 +117,7 @@ public static class Texto
 
         // Devuelve el resto del texto original (con tildes y mayúsculas), saltando las palabras ya usadas.
         var originales = Regex.Split(texto.Trim(), @"\s+");
-        int saltar = i + usadas;
+        int saltar = i + usadas - pegado;
         var resto = string.Join(" ", originales.Skip(Math.Min(saltar, originales.Length)));
         return resto.Trim(' ', ',', '.', ':', ';', '!', '¡', '?', '¿', '-');
     }

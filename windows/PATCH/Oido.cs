@@ -218,13 +218,13 @@ public sealed class Oido : IDisposable
     public void Pausar(bool si)
     {
         pausado = si;
-        if (si) lock (candado) { reconocedor?.Reset(); ultimoParcial = ""; }
+        if (si) lock (candado) { reconocedor?.Reset(); ultimoParcial = ""; OlvidarAudio(); }
     }
 
     /// <summary>Olvida lo que llevaba oído (para empezar una frase nueva).</summary>
     public void Reiniciar()
     {
-        lock (candado) { reconocedor?.Reset(); ultimoParcial = ""; }
+        lock (candado) { reconocedor?.Reset(); ultimoParcial = ""; OlvidarAudio(); }
     }
 
     // Volumen de la frase en curso: el pico del nivel (suavizado) desde que empezó a hablar.
@@ -265,11 +265,22 @@ public sealed class Oido : IDisposable
         {
             if (reconocedor == null) return;
             picoFrase = Math.Max(picoFrase * 0.995, rms);
-            if (reconocedor.AcceptWaveform(buffer, bytes)) final = LeerFrase(reconocedor.Result(), picoFrase);
+            GuardarAudio(buffer, bytes);
+            if (reconocedor.AcceptWaveform(buffer, bytes))
+            {
+                final = LeerFrase(reconocedor.Result(), picoFrase) with { Audio = AudioDeLaFrase() };
+                OlvidarAudio();
+            }
             else
             {
                 var p = Leer(reconocedor.PartialResult(), "partial");
-                if (p != ultimoParcial) { ultimoParcial = p; parcial = p; }
+                if (p != ultimoParcial)
+                {
+                    ultimoParcial = p;
+                    parcial = p;
+                    // Vosk muestra la primera palabra un poco después de que empezó a sonar: se guarda un margen antes.
+                    if (p.Length > 0 && inicioVoz < 0) inicioVoz = Math.Max(0, fraseAudio.Length - bytes - MargenAntes);
+                }
             }
         }
         if (final != null)
@@ -281,8 +292,43 @@ public sealed class Oido : IDisposable
         else if (!string.IsNullOrEmpty(parcial)) Parcial?.Invoke(parcial);
     }
 
-    /// <summary>Lo que se oyó, qué tan seguro está el reconocedor (0 a 1) y qué tan fuerte sonó.</summary>
-    public sealed record Frase(string Texto, double Seguridad, double Volumen);
+    // ------------------------------------------------------------------ Audio de la frase (para Whisper)
+
+    // El audio desde la última frase completa, hasta 30 s. Se marca dónde empezó a hablar para no mandar el silencio previo.
+    readonly MemoryStream fraseAudio = new();
+    long inicioVoz = -1;
+    const int BytesPorSegundo = 32000;                 // 16 kHz, 16 bits, mono
+    const int MaxAudio = 30 * BytesPorSegundo;
+    const int MargenAntes = 1200 * BytesPorSegundo / 1000; // 1,2 s
+
+    void GuardarAudio(byte[] buffer, int bytes)
+    {
+        fraseAudio.Write(buffer, 0, bytes);
+        if (fraseAudio.Length <= MaxAudio) return;
+        // Solo se conservan los últimos 20 s.
+        var todo = fraseAudio.ToArray();
+        var quitar = todo.Length - 20 * BytesPorSegundo;
+        fraseAudio.SetLength(0);
+        fraseAudio.Write(todo, quitar, todo.Length - quitar);
+        inicioVoz = inicioVoz < 0 ? -1 : Math.Max(0, inicioVoz - quitar);
+    }
+
+    byte[] AudioDeLaFrase()
+    {
+        var todo = fraseAudio.ToArray();
+        // Sin parcial (una frase muy corta), se toman los últimos 6 s.
+        var desde = inicioVoz >= 0 ? inicioVoz : Math.Max(0, todo.Length - 6 * BytesPorSegundo);
+        desde -= desde % 2;
+        return todo[(int)desde..];
+    }
+
+    void OlvidarAudio() { fraseAudio.SetLength(0); inicioVoz = -1; }
+
+    /// <summary>El audio de lo que se lleva oído de la frase en curso (cuando se envía sin esperar el final de Vosk).</summary>
+    public byte[] AudioEnCurso() { lock (candado) return AudioDeLaFrase(); }
+
+    /// <summary>Lo que se oyó, qué tan seguro está el reconocedor (0 a 1), qué tan fuerte sonó y su audio.</summary>
+    public sealed record Frase(string Texto, double Seguridad, double Volumen, byte[]? Audio = null);
 
     /// <summary>La última frase completa (con su seguridad y volumen), para decidir si iba dirigida a PATCH.</summary>
     public Frase? UltimaFrase { get; private set; }

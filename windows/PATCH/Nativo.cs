@@ -132,7 +132,7 @@ public static class Nativo
         catch (Exception ex) { Registro.Log("Limpieza de barras: " + ex.Message); }
     }
 
-    // ---------------- Atajo global (Ctrl+Alt+Espacio)
+    // ---------------- Atajo global (Ctrl+Alt+P)
 
     public sealed class Atajo : IDisposable
     {
@@ -145,8 +145,8 @@ public static class Nativo
             this.accion = accion;
             fuente = new HwndSource(new HwndSourceParameters("PATCH-atajo") { Width = 0, Height = 0, WindowStyle = 0 });
             fuente.AddHook(Gancho);
-            Registrado = RegisterHotKey(fuente.Handle, 1, 0x0001 /*ALT*/ | 0x0002 /*CTRL*/ | 0x4000 /*NOREPEAT*/, 0x20 /*ESPACIO*/);
-            if (!Registrado) Registro.Log("No pude registrar el atajo Ctrl+Alt+Espacio (¿lo usa otra app?)");
+            Registrado = RegisterHotKey(fuente.Handle, 1, 0x0001 /*ALT*/ | 0x0002 /*CTRL*/ | 0x4000 /*NOREPEAT*/, 0x50 /*P*/);
+            if (!Registrado) Registro.Log("No pude registrar el atajo Ctrl+Alt+P (¿lo usa otra app?)");
         }
 
         IntPtr Gancho(IntPtr hwnd, int msg, IntPtr w, IntPtr l, ref bool manejado)
