@@ -64,7 +64,14 @@ public sealed class Cerebro
         public readonly TaskCompletionSource<Resultado> Fin = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Action<string> Estado = _ => { };
         public readonly List<Denegado> Denegados = new();
+        public bool EnVivo;    // corre en el proceso abierto (se le pueden sumar mensajes a mitad)
     }
+
+    /// <summary>
+    /// Una respuesta que llegó sin turno esperando: pasa cuando se sumó un mensaje justo cuando Claude terminaba,
+    /// y Claude lo contesta como un turno aparte.
+    /// </summary>
+    public event Action<Resultado>? Suelta;
 
     readonly object candado = new();
     Process? vivo;
@@ -144,7 +151,9 @@ public sealed class Cerebro
         ".\\scripts\\buscar.ps1; para leer Word, Excel o PowerPoint, .\\scripts\\leer.ps1; para PDF, la herramienta Read; " +
         "para ordenar o mover varios archivos, .\\scripts\\organizar.ps1 (primero con -Vista). " +
         "En PowerShell escribe las rutas completas, nunca variables como $env:USERPROFILE o $HOME, y no uses bloques { }, " +
-        "ForEach-Object ni [Clase]::Metodo(): eso siempre pide permiso. Filtra con la forma simple (Where-Object Length -gt 50MB). " +
+        "ForEach-Object, [Clase]::Metodo() ni paréntesis como (Get-ChildItem ...).Count: eso siempre pide permiso. " +
+        "Filtra con la forma simple (Where-Object Length -gt 50MB), cuenta con | Measure-Object y busca un tipo por " +
+        "comando con -Filter *.mp4 (una lista con coma como -Include *.mp4,*.mov pide permiso). " +
         $"Rutas de este equipo: carpeta del usuario {Ruta(Environment.SpecialFolder.UserProfile)}, Escritorio {Ruta(Environment.SpecialFolder.Desktop)}, " +
         $"Documentos {Ruta(Environment.SpecialFolder.MyDocuments)}, Descargas {Descargas()}, Imágenes {Ruta(Environment.SpecialFolder.MyPictures)}. " +
         "Nunca escribas tu propio código o script para abrir, convertir o mover archivos, ni para saltarte un permiso, " +
@@ -297,7 +306,6 @@ public sealed class Cerebro
             case "result":
                 if (o.TryGetProperty("session_id", out var s2)) sesion = s2.GetString();
                 ultimaVez = DateTime.Now;
-                if (t == null) break;
                 var denegados = new List<Denegado>();
                 if (o.TryGetProperty("permission_denials", out var pd) && pd.ValueKind == JsonValueKind.Array)
                     foreach (var d in pd.EnumerateArray())
@@ -308,6 +316,12 @@ public sealed class Cerebro
                         });
                 var texto = o.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() ?? "" : "";
                 var error = o.TryGetProperty("is_error", out var ie) && ie.ValueKind == JsonValueKind.True;
+                if (t == null)
+                {
+                    Registro.Log($"Respuesta suelta (a algo sumado al final): {texto[..Math.Min(200, texto.Length)]}");
+                    if (texto.Length > 0 || denegados.Count > 0) Suelta?.Invoke(new Resultado { Texto = texto, Denegados = denegados, Error = error });
+                    break;
+                }
                 lock (candado) { if (turno == t) turno = null; }
                 Registro.Log($"Respuesta ({denegados.Count} permisos pendientes): {texto[..Math.Min(200, texto.Length)]}");
                 t.Fin.TrySetResult(new Resultado { Texto = texto, Denegados = denegados, Error = error });
@@ -323,7 +337,7 @@ public sealed class Cerebro
         estado("Pensando…");
         if (permitir != null) return await PreguntarConPermiso(texto, permitir.ToList(), estado);
 
-        var t = new Turno { Estado = estado };
+        var t = new Turno { Estado = estado, EnVivo = true };
         Process? p;
         lock (candado)
         {
@@ -334,8 +348,9 @@ public sealed class Cerebro
         var mensaje = JsonSerializer.Serialize(new { type = "user", message = new { role = "user", content = texto } });
         try
         {
-            await p.StandardInput.BaseStream.WriteAsync(new UTF8Encoding(false).GetBytes(mensaje + "\n"));
-            await p.StandardInput.BaseStream.FlushAsync();
+            // Con el candado: así no se cruza con un mensaje que se le esté sumando (Agregar).
+            var bytes = new UTF8Encoding(false).GetBytes(mensaje + "\n");
+            lock (candado) { p.StandardInput.BaseStream.Write(bytes); p.StandardInput.BaseStream.Flush(); }
         }
         catch (Exception ex)
         {
@@ -375,6 +390,30 @@ public sealed class Cerebro
         var r = await t.Fin.Task;
         Precalentar();
         return r;
+    }
+
+    /// <summary>
+    /// Suma un mensaje a la tarea en curso SIN cortarla: Claude Code lo lee en la siguiente pausa entre herramientas
+    /// y lo tiene en cuenta en la misma respuesta (probado: una sola respuesta que atiende las dos cosas).
+    /// Devuelve false si la tarea corre en un proceso aparte (acción autorizada): entonces se manda después.
+    /// </summary>
+    public bool Agregar(string texto)
+    {
+        Process? p;
+        lock (candado)
+        {
+            if (turno is not { EnVivo: true } || vivo is not { HasExited: false }) return false;
+            p = vivo;
+        }
+        try
+        {
+            var mensaje = JsonSerializer.Serialize(new { type = "user", message = new { role = "user", content = texto } });
+            var bytes = new UTF8Encoding(false).GetBytes(mensaje + "\n");
+            lock (candado) { p.StandardInput.BaseStream.Write(bytes); p.StandardInput.BaseStream.Flush(); }
+            Registro.Log($"Sumado a la tarea: «{texto}»");
+            return true;
+        }
+        catch (Exception ex) { Registro.Log("No pude sumar a la tarea: " + ex.Message); return false; }
     }
 
     public void Cancelar()
