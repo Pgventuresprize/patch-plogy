@@ -110,6 +110,27 @@ enum Texto {
         return p.contains("no") || p.contains("cancela") || p.contains("cancelar") || p.contains("espera")
     }
 
+    /// Si la respuesta termina en una pregunta de sí o no ("¿Quieres que lo abra?"), para mostrar los botones Sí/No.
+    /// Una pregunta abierta ("¿Qué necesitas?", "¿Para qué hora?") no lleva botones.
+    static func esPreguntaSiNo(_ t: String) -> Bool {
+        let t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.hasSuffix("?") else { return false }
+        let pregunta: Substring
+        if let i = t.lastIndex(of: "¿") { pregunta = t[t.index(after: i)...] }
+        else if let j = t.dropLast().lastIndex(where: { ".!\n".contains($0) }) { pregunta = t[t.index(after: j)...] }
+        else { pregunta = t[...] }
+        let relleno: Set<String> = ["y", "pero", "entonces", "bueno", "o"]
+        let p = Array(normalizar(String(pregunta)).drop(while: { relleno.contains($0) }))
+        let interrogativas: Set<String> = ["que", "cual", "cuales", "como", "cuando", "donde", "adonde", "quien", "quienes",
+                                           "cuanto", "cuanta", "cuantos", "cuantas"]
+        let preposiciones: Set<String> = ["por", "para", "a", "en", "de", "con", "desde", "hasta", "sobre"]
+        guard let primera = p.first else { return false }
+        if interrogativas.contains(primera) { return false }
+        if p.count > 1 && preposiciones.contains(primera) && interrogativas.contains(p[1]) { return false }
+        if p.dropFirst().contains("o") { return false } // "¿lo borro o lo muevo?" es elegir, no sí o no
+        return true
+    }
+
     static func esAfirmativo(_ s: String) -> Bool {
         let p = Set(normalizar(s))
         let si: Set<String> = ["si", "dale", "hazlo", "autorizo", "autorizado", "autoriza", "claro", "adelante",

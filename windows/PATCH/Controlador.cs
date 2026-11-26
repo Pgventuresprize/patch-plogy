@@ -25,7 +25,7 @@ public sealed class Controlador
     Bandeja bandeja = null!;
     Nativo.Atajo? atajo;
     readonly DispatcherTimer reloj = new() { Interval = TimeSpan.FromMilliseconds(150) };
-    FileSystemWatcher? vigia;
+    FileSystemWatcher? vigia, vigiaComandos;
 
     Fase fase = Fase.Reposo;
     bool microfonoListo;
@@ -196,6 +196,20 @@ public sealed class Controlador
         espera.Tick += (_, _) => { espera.Stop(); RecalcularAlias(); EnviarConfig(); };
         vigia.Changed += (_, _) => ui.BeginInvoke(() => { espera.Stop(); espera.Start(); });
         vigia.EnableRaisingEvents = true;
+
+        // Los comandos los puede crear Claude (por voz) o el usuario a mano: Ajustes se actualiza solo.
+        Comandos.Preparar();
+        try
+        {
+            vigiaComandos = new FileSystemWatcher(Comandos.Carpeta, "*.md") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+            var esperaC = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            esperaC.Tick += (_, _) => { esperaC.Stop(); EnviarConfig(); };
+            FileSystemEventHandler h = (_, _) => ui.BeginInvoke(() => { esperaC.Stop(); esperaC.Start(); });
+            vigiaComandos.Changed += h; vigiaComandos.Created += h; vigiaComandos.Deleted += h;
+            vigiaComandos.Renamed += (_, _) => ui.BeginInvoke(() => { esperaC.Stop(); esperaC.Start(); });
+            vigiaComandos.EnableRaisingEvents = true;
+        }
+        catch (Exception ex) { Registro.Log("No pude vigilar los comandos: " + ex.Message); }
     }
 
     // ------------------------------------------------------------------ Oído
@@ -632,10 +646,17 @@ public sealed class Controlador
             Decir($"Para eso necesito que escribas {palabraPendiente} en la barra lateral.");
             return;
         }
+        // Un comando guardado ("buenos días"): la app lo reconoce al instante y le pasa los pasos a Claude.
+        if (Comandos.Buscar(texto) is { } c)
+        {
+            Registro.Log($"Comando «{c.Nombre}» ({c.Archivo}) por «{texto}»");
+            Consultar(Comandos.Orden(c, texto), null, texto, $"Comando «{c.Nombre}»…");
+            return;
+        }
         Consultar(texto, null, texto);
     }
 
-    async void Consultar(string texto, List<string>? permitir, string? mostrando)
+    async void Consultar(string texto, List<string>? permitir, string? mostrando, string titulo = "Pensando…")
     {
         fase = Fase.Pensando;
         oyendoEnTarea = false;
@@ -648,8 +669,8 @@ public sealed class Controlador
             ordenEnviada = DateTime.Now; // unos segundos para seguir hablando sin repetir el nombre
         }
         if (porSumar.Length > 0) { texto += $"\n\n(Además, mientras trabajabas te dije: {porSumar})"; porSumar = ""; }
-        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo = "Pensando…", texto = "" });
-        else pildora.Mostrar(Fase.Pensando, "Pensando…", mostrando ?? "");
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo, texto = "" });
+        else pildora.Mostrar(Fase.Pensando, titulo, mostrando ?? "");
 
         var r = await cerebro.Preguntar(texto, permitir, e => ui.BeginInvoke(() =>
         {
@@ -716,7 +737,7 @@ public sealed class Controlador
         }
         var t = string.IsNullOrWhiteSpace(r.Texto) ? "Listo." : r.Texto;
         AgregarMensaje("asistente", t);
-        if (!barra.Abierta) pildora.Mostrar(Fase.Hablando, Config.Asistente, ParaPantalla(t), siNo: t.TrimEnd().EndsWith("?"));
+        if (!barra.Abierta) pildora.Mostrar(Fase.Hablando, Config.Asistente, ParaPantalla(t), siNo: Texto.EsPreguntaSiNo(t));
         else barra.Enviar(new { tipo = "estado", fase = "hablando", titulo = "", texto = "" });
         Decir(t);
     }
@@ -951,6 +972,31 @@ public sealed class Controlador
                 catch (Exception ex) { Registro.Log("No pude guardar la clave de Groq: " + ex.Message); }
                 _ = PrepararWhisper(rehacer: true);
                 break;
+            case "comandoGuardar":
+                try
+                {
+                    var archivo = Comandos.Guardar(S("archivo"), S("frases"), S("pasos"));
+                    Registro.Log($"Comando guardado desde Ajustes: {archivo}");
+                    barra.Enviar(new { tipo = "comandoGuardado", archivo, error = (string?)null });
+                }
+                catch (Exception ex) { barra.Enviar(new { tipo = "comandoGuardado", archivo = S("archivo"), error = ex.Message }); }
+                EnviarConfig();
+                break;
+            case "comandoBorrar":
+                try { Comandos.Borrar(S("archivo")); Registro.Log($"Comando a la papelera: {S("archivo")}"); }
+                catch (Exception ex) { Registro.Log("No pude borrar el comando: " + ex.Message); }
+                EnviarConfig();
+                break;
+            case "comandoProbar":
+                if (Comandos.Todos().FirstOrDefault(x => x.Archivo == S("archivo")) is { } cp)
+                {
+                    boca.Callar();
+                    turnoVoz++;
+                    if (fase == Fase.Pensando) cerebro.Cancelar();
+                    fase = Fase.Reposo;
+                    Consultar(Comandos.Orden(cp, cp.Nombre), null, cp.Nombre, $"Comando «{cp.Nombre}»…");
+                }
+                break;
             case "calibrar": EmpezarCalibracion(); break;
             case "probarVoz": Decir($"Hola, soy {Config.Asistente}. Así sueno.", false); break;
             case "nuevaConversacion":
@@ -968,7 +1014,7 @@ public sealed class Controlador
             case "inicioWindows": PonerInicio(B("on")); EnviarConfig(); break;
             case "abrir":
                 var que = S("que");
-                var ruta = que switch { "notas" => Path.Combine(Config.Carpeta, "notas"), "registro" => Registro.Ruta, "carpeta" => Config.Carpeta, "config" => Config.Ruta, "groq" => "https://console.groq.com/keys", _ => null };
+                var ruta = que switch { "notas" => Path.Combine(Config.Carpeta, "notas"), "registro" => Registro.Ruta, "carpeta" => Config.Carpeta, "comandos" => Comandos.Carpeta, "config" => Config.Ruta, "groq" => "https://console.groq.com/keys", _ => null };
                 if (ruta != null) try { Process.Start(new ProcessStartInfo(ruta) { UseShellExecute = true }); } catch { }
                 break;
         }
@@ -984,6 +1030,7 @@ public sealed class Controlador
             vozEdge = Config.VozEdge, alias = Config.Alias, inicioWindows = InicioActivo, atajo = "Ctrl+Alt+P",
             cancelarEco = Config.Valor("cancelar_eco", "on") != "off", volumenAutomatico = Config.Valor("volumen_automatico", "on") != "off",
             conEco = oido.ConEco,
+            comandos = Comandos.Todos().Select(c => new { archivo = c.Archivo, frases = string.Join(", ", c.Frases), pasos = c.Pasos }),
             whisper = Transcriptor.Activo, oido = Transcriptor.Modo, groqClave = ClaveGroq.Hay, oidoEstado = transcriptor.Estado,
             voces = Voces.Select(v => new { id = v.Split('|')[0], nombre = v.Split('|')[1] }),
             modelos = new[] { new { id = "haiku", nombre = "Haiku (el más rápido)" }, new { id = "sonnet", nombre = "Sonnet (equilibrado)" }, new { id = "opus", nombre = "Opus (el más capaz)" } },

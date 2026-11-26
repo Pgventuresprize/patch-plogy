@@ -11,6 +11,7 @@ for r in "$@"; do
   [ -e "$r" ] || { echo "No existe: $r"; continue; }
   completa="$(cd "$(dirname "$r")" && pwd)/$(basename "$r")"
   case "$completa" in
+    "$DIR/comandos/"*.md) [ "$(dirname "$completa")" = "$DIR/comandos" ] || { echo "Carpeta protegida, no lo toco: $completa"; continue; } ;; # los comandos del usuario sí
     "$HOME") echo "Carpeta protegida, no lo toco: $completa"; continue ;;
     "$HOME/Library"*|"$HOME/.ssh"*|"$DIR"*) echo "Carpeta protegida, no lo toco: $completa"; continue ;;
     "$HOME/"*) ;;

@@ -198,6 +198,28 @@ public static class Texto
         return Palabras(s).Any(si.Contains);
     }
 
+    static readonly HashSet<string> Interrogativas = new()
+        { "que", "cual", "cuales", "como", "cuando", "donde", "adonde", "quien", "quienes", "cuanto", "cuanta", "cuantos", "cuantas" };
+    static readonly HashSet<string> Preposiciones = new() { "por", "para", "a", "en", "de", "con", "desde", "hasta", "sobre" };
+
+    /// <summary>
+    /// Si la respuesta termina en una pregunta de sí o no ("¿Quieres que lo abra?"), para mostrar los botones Sí/No.
+    /// Una pregunta abierta ("¿Qué necesitas?", "¿Para qué hora?") no lleva botones.
+    /// </summary>
+    public static bool EsPreguntaSiNo(string t)
+    {
+        t = t.TrimEnd();
+        if (t.Length < 2 || !t.EndsWith("?")) return false;
+        var i = t.LastIndexOf('¿');
+        var pregunta = i >= 0 ? t[(i + 1)..] : t[(t.LastIndexOfAny(new[] { '.', '!', '\n' }, t.Length - 2) + 1)..];
+        var p = Palabras(pregunta).SkipWhile(w => w is "y" or "pero" or "entonces" or "bueno" or "o").ToArray();
+        if (p.Length == 0) return false;
+        if (Interrogativas.Contains(p[0])) return false;
+        if (p.Length > 1 && Preposiciones.Contains(p[0]) && Interrogativas.Contains(p[1])) return false;
+        if (p.Skip(1).Contains("o")) return false; // "¿lo borro o lo muevo?" es elegir, no sí o no
+        return true;
+    }
+
     /// <summary>Quita markdown, enlaces y tablas para leerlo en voz alta. Corta en un final de frase.</summary>
     public static string ParaVoz(string t, int max)
     {

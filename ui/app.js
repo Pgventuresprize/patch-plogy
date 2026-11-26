@@ -5,6 +5,7 @@
   let cfg = { asistente: "Patch", usuario: "", microfono: true, voz: true };
   let enVivo = null;           // burbuja con lo que se está oyendo
   let palabra = null;          // confirmación escrita pendiente
+  let editando = null;         // comando que se está editando en Ajustes ("" si es uno nuevo)
 
   // ---------------------------------------------------------------- Utilidades
   const escapar = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -104,6 +105,69 @@
     $("cfgInicio").checked = !!cfg.inicioWindows;
     $("atajo").textContent = cfg.atajo || "Ctrl+Alt+P";
     $("alias").innerHTML = (cfg.alias || []).map((a) => `<span>${escapar(a)}</span>`).join("");
+    // La app que no maneja comandos (todavía la de Mac) no manda la lista: la sección no se muestra.
+    $("seccionComandos").hidden = cfg.comandos === undefined;
+    $("lnkComandos").hidden = cfg.comandos === undefined;
+    if (c.comandos !== undefined && editando === null) pintarComandos();
+  }
+
+  // ---------------------------------------------------------------- Comandos
+
+  function pintarComandos() {
+    const lista = $("listaComandos");
+    lista.innerHTML = "";
+    const todos = cfg.comandos || [];
+    if (!todos.length && editando === null) lista.innerHTML = '<p class="nota" style="margin-bottom:8px">Todavía no tienes comandos.</p>';
+    for (const c of todos) lista.appendChild(editando === c.archivo ? formulario(c) : tarjeta(c));
+    if (editando === "") lista.appendChild(formulario({ archivo: "", frases: "", pasos: "" }));
+    $("btnNuevoComando").hidden = editando !== null;
+  }
+  function tarjeta(c) {
+    const d = document.createElement("div");
+    d.className = "comando";
+    const [nombre, ...otras] = c.frases.split(",").map((x) => x.trim());
+    d.innerHTML = `<div class="comando-cabecera"><b>«${escapar(nombre)}»</b><span><button class="enlace" data-a="probar">Probar</button><button class="enlace" data-a="editar">Editar</button></span></div>` +
+      (otras.length ? `<div class="comando-frases">También: ${otras.map(escapar).join(", ")}</div>` : "") +
+      `<div class="comando-pasos">${escapar(c.pasos)}</div>`;
+    d.querySelector('[data-a="probar"]').onclick = () => { Puente.enviar({ tipo: "comandoProbar", archivo: c.archivo }); $("ajustes").hidden = true; };
+    d.querySelector('[data-a="editar"]').onclick = () => { editando = c.archivo; pintarComandos(); };
+    return d;
+  }
+  function formulario(c) {
+    const d = document.createElement("div");
+    d.className = "comando";
+    d.innerHTML = `<label class="campo"><span>Cuando le digas</span><input class="frases" placeholder="buenos días, buen día"><small>Puedes poner varias formas, separadas por comas.</small></label>` +
+      `<label class="campo"><span>Lo que hace</span><textarea class="pasos" placeholder="1. Dime la hora.&#10;2. Dime el clima de hoy en Bogotá.&#10;3. Lee mi agenda de hoy."></textarea><small>Escríbelo como se lo dirías a una persona, un paso por línea.</small></label>` +
+      `<div class="comando-error" hidden></div>` +
+      `<div class="comando-botones"><button class="boton principal" data-a="guardar">Guardar</button><button class="boton" data-a="cancelar">Cancelar</button>` +
+      (c.archivo ? `<button class="enlace borrar" data-a="borrar">Borrar</button>` : "") + `</div>`;
+    d.querySelector(".frases").value = c.frases;
+    d.querySelector(".pasos").value = c.pasos;
+    d.querySelector('[data-a="guardar"]').onclick = () => {
+      const frases = d.querySelector(".frases").value.trim(), pasos = d.querySelector(".pasos").value.trim();
+      const err = d.querySelector(".comando-error");
+      if (!frases || !pasos) { err.textContent = !frases ? "Falta la frase que lo activa." : "Faltan los pasos."; err.hidden = false; return; }
+      Puente.enviar({ tipo: "comandoGuardar", archivo: c.archivo, frases, pasos });
+    };
+    d.querySelector('[data-a="cancelar"]').onclick = () => { editando = null; pintarComandos(); };
+    const borrar = d.querySelector('[data-a="borrar"]');
+    if (borrar) borrar.onclick = () => {
+      if (!borrar.dataset.seguro) { borrar.dataset.seguro = "1"; borrar.textContent = "¿Seguro? Toca otra vez"; return; }
+      Puente.enviar({ tipo: "comandoBorrar", archivo: c.archivo });
+      editando = null;
+    };
+    setTimeout(() => d.querySelector(c.archivo ? ".pasos" : ".frases").focus(), 30);
+    return d;
+  }
+  $("btnNuevoComando").onclick = () => { editando = ""; pintarComandos(); };
+  function comandoGuardado(m) {
+    if (m.error) {
+      const err = document.querySelector("#listaComandos .comando-error");
+      if (err) { err.textContent = m.error; err.hidden = false; }
+      return;
+    }
+    editando = null;
+    pintarComandos();
   }
 
   function estado(e) {
@@ -181,6 +245,7 @@
       case "confirmar": confirmar(m); break;
       case "permiso": permiso(m); break;
       case "calibracion": calibracion(m); break;
+      case "comandoGuardado": comandoGuardado(m); break;
       case "escuchando": {
         // Durante la calibración se muestra lo que va oyendo
         if (!$("btnCalibrar").disabled) break;

@@ -16,6 +16,9 @@ foreach ($r in $Rutas) {
   if (-not (Test-Path -LiteralPath $completa)) { "No existe: $completa"; continue }
   if (-not $completa.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase)) { "Fuera de tu carpeta de usuario, no lo toco: $completa"; continue }
   $bloqueada = $protegidas | Where-Object { $_ -and $completa.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }
+  # Dentro de PATCH solo se pueden borrar los comandos del usuario (un .md directo en comandos\).
+  $esComando = ((Split-Path $completa -Parent) -eq (Join-Path $raiz 'comandos')) -and $completa.EndsWith('.md', [StringComparison]::OrdinalIgnoreCase)
+  if ($esComando) { $bloqueada = $null }
   if ($bloqueada -or $completa -eq $HOME) { "Carpeta protegida, no lo toco: $completa"; continue }
   $opciones = [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs
   $papelera = [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin

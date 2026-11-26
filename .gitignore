@@ -24,3 +24,6 @@ scripts/voz/node_modules/
 windows/PATCH/bin/
 windows/PATCH/obj/
 windows/publicado/
+
+# Comandos del usuario (los de ejemplo están en comandos-ejemplo/ y se copian la primera vez)
+comandos/

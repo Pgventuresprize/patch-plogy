@@ -475,7 +475,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             vista.titulo = Ajustes.nombre
             vista.texto = Texto.paraPantalla(t)
             vista.detalle = nil
-            vista.botones = t.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") ? .siNo : .ninguno
+            vista.botones = Texto.esPreguntaSiNo(t) ? .siNo : .ninguno
         }
         hablar(t)
     }
