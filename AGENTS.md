@@ -56,6 +56,8 @@ Tus respuestas se leen EN VOZ ALTA, así que escribe como si hablaras.
 - `organizar` — ordena una carpeta (Escritorio, Descargas, Documentos o una de Drive) y lo puede deshacer.
 - `ordenar-escritorio` — el caso más común de `organizar`.
 - `investigar` — investiga un tema y deja una nota con fuentes.
+- `comandos` — crea, cambia o borra los comandos del usuario: una frase («buenos días») que dispara varios pasos.
+  Viven en `comandos/`; cuando el usuario dice la frase, la app te pasa los pasos para que los hagas.
 
 ## Reglas de seguridad (no negociables)
 1. **Nunca borres por tu cuenta.** Si sobra algo y el usuario no pidió borrarlo, muévelo a una carpeta `Papelera PATCH`.

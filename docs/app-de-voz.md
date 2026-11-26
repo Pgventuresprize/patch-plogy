@@ -94,6 +94,20 @@ como WAV, y el registro anota `Whisper (ms): «…» · Vosk: «…»` y cada `F
 Control policy has blocked this file"), no la Debug ni la versión instalada. Pasa con programas sin firma digital que
 Windows no conoce. Antes de entregarla a estudiantes hay que firmar la app (por ejemplo, Azure Trusted Signing).
 
+## Comandos (Windows, rama `comandos`, 2026-11-26)
+Un comando es una frase («buenos días») que dispara varios pasos de una vez: la hora, el clima, la agenda, música…
+- **Dónde viven:** uno por archivo en `comandos/` (`frases:` arriba, los pasos en español normal abajo). La carpeta es
+  del usuario y git no la toca; la primera vez la app la crea con los ejemplos de `comandos-ejemplo/`.
+- **Cómo se activan:** `Comandos.Buscar` reconoce la frase en la app, sin esperar a Claude, y `Comandos.Orden` le pasa
+  los pasos. Tolera una letra mal oída y palabras de cortesía ("buenos días, Patch, por favor"); cualquier otra palabra
+  la vuelve una orden normal ("me voy a dormir" no es «me voy»; "buenos días, ¿qué tengo el viernes?" va a Claude).
+- **Cómo se crean:** por voz ("crea un comando: cuando te diga me voy, dime qué tengo mañana") con la habilidad
+  `comandos`, que escribe el archivo (permiso `Edit(comandos/**)`), o en Ajustes › Comandos (crear, editar, probar,
+  borrar). Borrar los manda a la papelera; `papelera.ps1`/`.sh` dejan borrar solo los `.md` de `comandos/` dentro de PATCH.
+- **Clima sin permiso:** `Invoke-RestMethod "https://api.open-meteo.com/*"` está aprobado (gratis, sin clave).
+- Medido: «buenos días» (hora + clima de Bogotá + agenda) en 10 s con Sonnet, sin permisos. Crear «me voy» por voz: 7 s.
+- La app de Mac todavía no los reconoce (la sección de Ajustes no se muestra ahí); los archivos sirven igual.
+
 ## Menos permisos (lo que aprendimos el 2026-11-25)
 En modo sin pantalla, Claude Code **rechaza siempre** en PowerShell las variables (`$env:USERPROFILE`, `$HOME`), los
 bloques `{ }` (`ForEach-Object`, `Where-Object { … }`), `$_`, las llamadas `[Clase]::Metodo()` y las asignaciones, aunque
@@ -161,5 +175,7 @@ y ejecutar JavaScript en `https://patch.ui/` por el protocolo de depuración (po
   estudiantes reciben el modelo dentro del .zip o se descarga la primera vez (574 MB).
 - Mac: probar en un Mac real (hoy solo está compilada y empaquetada en GitHub Actions). Reacomodar ventanas al abrir
   la barra exigiría el permiso de Accesibilidad.
+- Comandos: llevarlos a la app de Mac (`Comandos.swift`); probar el paso de música (en Windows, abrir un link de
+  Spotify no lo hizo sonar solo).
 - Lo que queda de espera es el trabajo real del modelo (búsquedas, lecturas). Con Haiku es más rápido.
 - Codex: los hooks se generan, pero no se ha probado.

@@ -123,6 +123,13 @@
         <small>Haiku responde más rápido; Opus piensa mejor las tareas difíciles.</small>
       </label>
 
+      <div id="seccionComandos" hidden>
+        <h3>Comandos</h3>
+        <p class="nota">Una frase que hace varias cosas de una vez. Dile «crea un comando: cuando te diga buenos días, dime la hora y lee mi agenda», o agrégalo aquí.</p>
+        <div id="listaComandos"></div>
+        <button class="boton" id="btnNuevoComando">Nuevo comando</button>
+      </div>
+
       <h3>Voz</h3>
       <label class="campo">
         <span>Voz</span>
@@ -168,6 +175,7 @@
         <button class="enlace" data-abrir="notas">Abrir mis notas</button>
         <button class="enlace" data-abrir="registro">Ver el registro</button>
         <button class="enlace" data-abrir="carpeta">Carpeta de PATCH</button>
+        <button class="enlace" data-abrir="comandos" id="lnkComandos" hidden>Carpeta de comandos</button>
         <button class="enlace" id="btnNueva">Empezar una conversación nueva</button>
       </div>
       <p class="version">PATCH by Plogy</p>
