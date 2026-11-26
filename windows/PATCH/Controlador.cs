@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -18,6 +18,8 @@ public sealed class Controlador
     readonly Oido oido = new();
     readonly Boca boca = new();
     readonly Cerebro cerebro = new();
+    readonly Transcriptor transcriptor = new();
+    int turnoOido;              // sube con cada orden que pasa por Whisper (para descartar respuestas viejas)
     Pildora pildora = null!;
     BarraLateral barra = null!;
     Bandeja bandeja = null!;
@@ -115,10 +117,12 @@ public sealed class Controlador
                 microfonoListo = true;
                 EnviarConfig();
                 var archivos = Environment.GetCommandLineArgs()[prueba + 1].Split(';', StringSplitOptions.RemoveEmptyEntries);
+                var whisperListo = PrepararWhisper();
                 _ = Task.Run(async () =>
                 {
                   try
                   {
+                    await whisperListo; // la prueba usa el mismo oído que la app (con Whisper, si está activo)
                     await Task.Delay(3000);
                     for (int k = 0; k < archivos.Length; k++)
                     {
@@ -160,8 +164,9 @@ public sealed class Controlador
             }
             if (Config.Microfono) AbrirMicrofono();
             pildora.Mostrar(Fase.Aviso, $"{Config.Asistente} está listo",
-                microfonoListo ? $"Di «{Config.Asistente}» y tu pedido, o usa Ctrl+Alt+Espacio." : "El micrófono está bloqueado: toca aquí para escribirle.");
+                microfonoListo ? $"Di «{Config.Asistente}» y tu pedido, o usa Ctrl+Alt+P." : "El micrófono está bloqueado: toca aquí para escribirle.");
             pildora.OcultarEn(6);
+            _ = PrepararWhisper();
         }
         catch (Exception ex)
         {
@@ -274,10 +279,11 @@ public sealed class Controlador
                 var resto = Texto.DespuesDelNombre(t, Config.Asistente, alias);
                 if (resto == null) return;
                 Registro.Log($"Me llamaron: «{t}»");
-                if (resto.Length > 0) { orden = resto; Enviar(); }
-                else { Activar(false, ""); }
+                if (resto.Length > 0) { orden = resto; EnviarOido(frase, conNombre: true); }
+                else { Activar(false, ""); VerificarSoloNombre(frase); }
                 break;
             case Fase.Escuchando:
+                var conElNombre = nombreEnEstaFrase;
                 orden = nombreEnEstaFrase ? (Texto.DespuesDelNombre(t, Config.Asistente, alias) ?? "") : t;
                 if (desdeSeguimiento && !nombreEnEstaFrase && !DirigidaAMi(frase, orden))
                 {
@@ -290,15 +296,21 @@ public sealed class Controlador
                 }
                 nombreEnEstaFrase = false;
                 desdeSeguimiento = false;
-                if (orden.Trim().Length > 0) Enviar();
-                else { inicioEscucha = DateTime.Now; MostrarEscucha(); } // dijo solo el nombre: espera la orden
+                if (orden.Trim().Length > 0) EnviarOido(frase, conElNombre);
+                else
+                {
+                    // Dijo solo el nombre: espera la orden.
+                    inicioEscucha = DateTime.Now;
+                    MostrarEscucha();
+                    if (conElNombre) VerificarSoloNombre(frase);
+                }
                 break;
             case Fase.Seguimiento:
             case Fase.Permiso:
                 var conNombre = Texto.DespuesDelNombre(t, Config.Asistente, alias);
                 orden = conNombre ?? t;
                 if (conNombre == null && !DirigidaAMi(frase, orden)) { orden = ""; break; }
-                if (orden.Trim().Length > 0) Enviar();
+                if (orden.Trim().Length > 0) EnviarOido(frase, conNombre != null);
                 break;
         }
     }
@@ -312,6 +324,13 @@ public sealed class Controlador
         if (Texto.EsOrdenDeDescanso(texto)) return true;
         if (pendientes.Count > 0 && (Texto.EsAfirmativo(texto) || Texto.EsNegativo(texto))) return true;
         if (f == null) return true;
+        // Con la barra abierta la conversación está activa: no se filtra por lo que entendió Vosk (que oye con poca
+        // seguridad justo las palabras que no conoce). Decide el oído fino: si no oye habla, se ignora (ver EnviarOido).
+        if (barra.Abierta && Transcriptor.Activo && transcriptor.Listo && f.Seguridad < SeguridadMinima)
+        {
+            Registro.Log($"Frase sin nombre con la barra abierta (seguridad {f.Seguridad:0.00}): la revisa el oído fino. Vosk: «{texto}»");
+            return true;
+        }
         var ok = f.Seguridad >= SeguridadMinima;
         Registro.Log($"Frase sin nombre {(ok ? "aceptada" : "IGNORADA")} (seguridad {f.Seguridad:0.00}, volumen {f.Volumen:0.000}): «{texto}»");
         return ok;
@@ -391,6 +410,7 @@ public sealed class Controlador
         Registro.Log("Tarea cancelada por voz");
         oyendoEnTarea = false;
         porSumar = "";
+        turnoOido++; // si Whisper todavía transcribía la orden, ya no vale
         cerebro.Cancelar();
         AgregarMensaje("asistente", "Listo, lo dejé.");
         Decir("Listo, lo dejé.");
@@ -417,6 +437,7 @@ public sealed class Controlador
         if (!microfonoListo) { barra.Mostrar(); return; }
         boca.Callar();
         oido.Pausar(false);
+        turnoOido++; // una orden que Whisper todavía estaba transcribiendo ya no vale
         fase = Fase.Escuchando;
         nombreEnEstaFrase = conNombre;
         orden = resto;
@@ -439,7 +460,7 @@ public sealed class Controlador
             case Fase.Escuchando:
                 // Si dejó de cambiar el texto un buen rato, se envía (por si el reconocedor no cerró la frase).
                 // Sin el nombre (seguimiento) se espera a la frase completa, que trae la seguridad.
-                if (orden.Trim().Length > 0 && !desdeSeguimiento && (ahora - ultimoCambio).TotalSeconds > 2.5) Enviar();
+                if (orden.Trim().Length > 0 && !desdeSeguimiento && (ahora - ultimoCambio).TotalSeconds > 2.5) EnviarOido(null, nombreEnEstaFrase);
                 else if (desdeSeguimiento && (ahora - ultimoCambio).TotalSeconds > 6) { desdeSeguimiento = false; VolverAReposo(); }
                 else if (orden.Trim().Length == 0 && (ahora - inicioEscucha).TotalSeconds > 8) VolverAReposo();
                 break;
@@ -470,6 +491,112 @@ public sealed class Controlador
         oido.Reiniciar();
         pildora.OcultarEn(ocultarEn);
         if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "reposo", titulo = microfonoListo ? $"Di «{Config.Asistente}» para hablarme" : "Micrófono bloqueado: escríbeme", texto = "" });
+    }
+
+    // ------------------------------------------------------------------ Oído fino (Whisper)
+
+    /// <param name="rehacer">Cambió el modo o la clave de Groq: se vuelve a elegir el motor aunque ya haya uno listo.</param>
+    async Task PrepararWhisper(bool rehacer = false)
+    {
+        if (!Transcriptor.Activo || (transcriptor.Listo && !rehacer)) return;
+        try
+        {
+            var descargo = false;
+            await Task.Run(() => transcriptor.Preparar(aviso => ui.BeginInvoke(() =>
+            {
+                descargo = true;
+                Registro.Log(aviso);
+                if (fase == Fase.Reposo && !barra.Abierta) { pildora.Mostrar(Fase.Aviso, "Mejorando el oído…", aviso); pildora.OcultarEn(8); }
+            })));
+            Registro.Log("Oído fino listo: " + transcriptor.Descripcion);
+            if (descargo && fase == Fase.Reposo && !barra.Abierta)
+            {
+                pildora.Mostrar(Fase.Aviso, "Oído mejorado", $"Ahora entiendo mucho mejor lo que me pides. Di «{Config.Asistente}» y tu pedido.");
+                pildora.OcultarEn(6);
+            }
+            EnviarConfig();
+        }
+        catch (Exception ex) { Registro.Log("Oído fino no disponible (sigo con Vosk): " + ex.Message); EnviarConfig(); }
+    }
+
+    /// <summary>
+    /// Manda una orden dicha por voz. Si el oído fino está listo, primero la vuelve a transcribir con Whisper
+    /// (Vosk la oyó para detectar el nombre, pero confunde palabras). Con <paramref name="conNombre"/>, la frase
+    /// tenía que empezar por el nombre: si Whisper no lo oye, era una falsa alarma (por ejemplo, alguien dijo "pues").
+    /// </summary>
+    async void EnviarOido(Oido.Frase? f, bool conNombre)
+    {
+        var vosk = orden;
+        var audio = f?.Audio;
+        if (audio == null) { audio = oido.AudioEnCurso(); oido.Reiniciar(); } // se envía antes de que Vosk cierre la frase
+        if (!Transcriptor.Activo || !transcriptor.Listo || audio.Length < 8000) { Enviar(); return; }
+
+        var mio = ++turnoOido;
+        orden = "";
+        fase = Fase.Pensando;
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "pensando", titulo = "Te escuché…", texto = vosk });
+        else pildora.Mostrar(Fase.Pensando, "Te escuché…", vosk);
+        var reloj = Stopwatch.StartNew();
+        var texto = await transcriptor.Transcribir(audio);
+        if (mio != turnoOido || fase != Fase.Pensando) return; // lo cancelaron o empezó otra orden
+        var ms = reloj.ElapsedMilliseconds;
+
+        if (texto == null) { orden = vosk; Registro.Log($"Whisper falló, uso lo de Vosk: «{vosk}»"); }
+        else if (texto.Length == 0)
+        {
+            // Whisper manda: si no oyó habla, era ruido o una conversación lejana.
+            Registro.Log($"Whisper no oyó habla ({ms} ms). Vosk había oído «{vosk}»: lo ignoro");
+            if (conNombre) { VolverAReposo(); return; }
+            SeguirEscuchando();
+            return;
+        }
+        else
+        {
+            var resto = Texto.DespuesDelNombreEstricto(texto, Config.Asistente);
+            if (conNombre && resto == null)
+            {
+                Registro.Log($"Falsa alarma: Whisper oyó «{texto}» sin el nombre ({ms} ms). Vosk había oído «{vosk}»");
+                VolverAReposo();
+                return;
+            }
+            orden = resto ?? texto;
+            Registro.Log($"Whisper ({ms} ms): «{texto}» · Vosk: «{vosk}»");
+        }
+        if (orden.Trim().Trim(',', '.', ' ').Length == 0)
+        {
+            // Solo dijo el nombre: queda escuchando la orden.
+            if (conNombre) { Activar(false, ""); return; }
+            VolverAReposo();
+            return;
+        }
+        Enviar();
+    }
+
+    /// <summary>Se descartó una frase sin el nombre: sigue escuchando como antes (seguimiento o permiso), sin enviarla.</summary>
+    void SeguirEscuchando()
+    {
+        var permiso = pendientes.Count > 0 || palabraPendiente != null;
+        fase = permiso ? Fase.Permiso : Fase.Seguimiento;
+        inicioEscucha = DateTime.Now;
+        orden = "";
+        var titulo = permiso ? "¿Lo autorizo? Di sí o no" : "Te sigo escuchando…";
+        if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "seguimiento", titulo, texto = "" });
+        else { pildora.Mostrar(Fase.Seguimiento, titulo, "", siNo: permiso); pildora.OcultarEn(7); }
+    }
+
+    /// <summary>
+    /// Dijeron solo el nombre y quedó escuchando la orden. Si Whisper no oye el nombre en ese audio, era una falsa
+    /// alarma (una palabra parecida en una conversación) y vuelve a reposo, antes de tomar lo siguiente como orden.
+    /// </summary>
+    async void VerificarSoloNombre(Oido.Frase? f)
+    {
+        if (f?.Audio is not { Length: >= 8000 } audio || !Transcriptor.Activo || !transcriptor.Listo) return;
+        var mio = turnoOido;
+        var texto = await transcriptor.Transcribir(audio);
+        if (texto == null || mio != turnoOido || fase != Fase.Escuchando || orden.Trim().Length > 0) return;
+        if (Texto.DespuesDelNombreEstricto(texto, Config.Asistente) != null) return;
+        Registro.Log($"Falsa alarma: dijeron «{texto}», no mi nombre (Vosk: «{f.Texto}»)");
+        VolverAReposo();
     }
 
     // ------------------------------------------------------------------ Hablar con Claude
@@ -661,7 +788,7 @@ public sealed class Controlador
         if (microfonoListo) { oido.Detener(); microfonoListo = false; }
         Config.Poner("microfono", "off");
         Registro.Log("Descansando: voz cortada y micrófono cerrado");
-        pildora.Mostrar(Fase.Aviso, "Descansando", "No escucho nada. Para despertarme: Ctrl+Alt+Espacio o el icono junto al reloj.");
+        pildora.Mostrar(Fase.Aviso, "Descansando", "No escucho nada. Para despertarme: Ctrl+Alt+P o el icono junto al reloj.");
         pildora.OcultarEn(5);
         if (barra.Abierta) barra.Enviar(new { tipo = "estado", fase = "reposo", titulo = "Descansando: no escucho", texto = "" });
         EnviarConfig();
@@ -702,7 +829,7 @@ public sealed class Controlador
             case Fase.Reposo:
             case Fase.Seguimiento:
             case Fase.Permiso: Activar(false, ""); break;
-            case Fase.Escuchando: if (orden.Trim().Length == 0) VolverAReposo(); else Enviar(); break;
+            case Fase.Escuchando: if (orden.Trim().Length == 0) VolverAReposo(); else EnviarOido(null, nombreEnEstaFrase); break;
             case Fase.Hablando: boca.Callar(); turnoVoz++; Activar(false, ""); break;
             case Fase.Pensando:
                 // Trabajando: el atajo no corta la tarea; abre el oído para sumarle algo (y otra vez lo manda).
@@ -743,6 +870,7 @@ public sealed class Controlador
         cerebro.Cerrar();
         boca.Dispose();
         oido.Dispose();
+        try { transcriptor.Dispose(); } catch { }
         atajo?.Dispose();
         bandeja.Dispose();
         Application.Current.Shutdown();
@@ -782,9 +910,10 @@ public sealed class Controlador
                 break;
             case "config":
                 var clave = S("clave");
-                if (new[] { "asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco", "volumen_automatico" }.Contains(clave))
+                if (new[] { "asistente", "usuario", "modelo", "voz_edge", "escuchar_nombre", "max_caracteres", "cancelar_eco", "volumen_automatico", "whisper", "oido" }.Contains(clave))
                 {
                     Config.Poner(clave, S("valor"));
+                    if (clave is "whisper" or "oido" && Transcriptor.Activo) _ = PrepararWhisper(rehacer: true);
                     if (clave is "cancelar_eco" or "volumen_automatico" && microfonoListo)
                     {
                         // Se reabre el micrófono con la nueva forma de oír.
@@ -816,6 +945,12 @@ public sealed class Controlador
             case "permiso":
                 Enviar(B("ok") ? "sí" : "no");
                 break;
+            case "groqClave":
+                // La clave no pasa por patch-config.txt ni por el registro: se guarda cifrada y se prueba.
+                try { ClaveGroq.Guardar(S("clave")); Registro.Log("Clave de Groq guardada"); }
+                catch (Exception ex) { Registro.Log("No pude guardar la clave de Groq: " + ex.Message); }
+                _ = PrepararWhisper(rehacer: true);
+                break;
             case "calibrar": EmpezarCalibracion(); break;
             case "probarVoz": Decir($"Hola, soy {Config.Asistente}. Así sueno.", false); break;
             case "nuevaConversacion":
@@ -833,7 +968,7 @@ public sealed class Controlador
             case "inicioWindows": PonerInicio(B("on")); EnviarConfig(); break;
             case "abrir":
                 var que = S("que");
-                var ruta = que switch { "notas" => Path.Combine(Config.Carpeta, "notas"), "registro" => Registro.Ruta, "carpeta" => Config.Carpeta, "config" => Config.Ruta, _ => null };
+                var ruta = que switch { "notas" => Path.Combine(Config.Carpeta, "notas"), "registro" => Registro.Ruta, "carpeta" => Config.Carpeta, "config" => Config.Ruta, "groq" => "https://console.groq.com/keys", _ => null };
                 if (ruta != null) try { Process.Start(new ProcessStartInfo(ruta) { UseShellExecute = true }); } catch { }
                 break;
         }
@@ -846,9 +981,10 @@ public sealed class Controlador
             tipo = "config",
             asistente = Config.Asistente, usuario = Config.Usuario, modelo = Config.Modelo, voz = Config.VozActiva,
             microfono = microfonoListo, microfonoConfig = Config.Microfono, escucharNombre = Config.EscucharNombre,
-            vozEdge = Config.VozEdge, alias = Config.Alias, inicioWindows = InicioActivo, atajo = "Ctrl+Alt+Espacio",
+            vozEdge = Config.VozEdge, alias = Config.Alias, inicioWindows = InicioActivo, atajo = "Ctrl+Alt+P",
             cancelarEco = Config.Valor("cancelar_eco", "on") != "off", volumenAutomatico = Config.Valor("volumen_automatico", "on") != "off",
             conEco = oido.ConEco,
+            whisper = Transcriptor.Activo, oido = Transcriptor.Modo, groqClave = ClaveGroq.Hay, oidoEstado = transcriptor.Estado,
             voces = Voces.Select(v => new { id = v.Split('|')[0], nombre = v.Split('|')[1] }),
             modelos = new[] { new { id = "haiku", nombre = "Haiku (el más rápido)" }, new { id = "sonnet", nombre = "Sonnet (equilibrado)" }, new { id = "opus", nombre = "Opus (el más capaz)" } },
         });

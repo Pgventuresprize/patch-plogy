@@ -206,7 +206,7 @@ if (Test-Path $publicado) {
 Write-Host ""
 Write-Host "  ¡Listo! Ahora:"
 if ($appInstalada) {
-  Write-Host "   · Di «$nombre» y lo que necesitas (o Ctrl+Alt+Espacio). Toca la ventanita para abrir la barra lateral."
+  Write-Host "   · Di «$nombre» y lo que necesitas (o Ctrl+Alt+P). Toca la ventanita para abrir la barra lateral."
   Write-Host "   · La primera vez baja el reconocimiento de voz en español (38 MB)."
 }
 Write-Host "   · En la Terminal: abre una nueva y escribe  patchai"

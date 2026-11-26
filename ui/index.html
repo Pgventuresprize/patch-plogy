@@ -137,11 +137,28 @@
       <h3>Oído</h3>
       <label class="interruptor"><input type="checkbox" id="cfgEco"><span>Restar el sonido del computador (música, videos, su propia voz)</span></label>
       <label class="interruptor"><input type="checkbox" id="cfgAgc"><span>Subir mi voz automáticamente</span></label>
-      <p class="nota">Para que descanse y deje de escuchar, dile «silencio» o «descansa» (también sirve mientras habla). Para despertarlo: <b class="atajo2">Ctrl+Alt+Espacio</b> o el icono junto al reloj.</p>
+      <label class="interruptor"><input type="checkbox" id="cfgWhisper"><span>Oído fino: entiende mucho mejor lo que le pides</span></label>
+      <div id="oidoFino">
+        <label class="campo">
+          <span>Dónde entiende lo que dices</span>
+          <select id="cfgOido">
+            <option value="auto">Automático: lo más rápido para este computador</option>
+            <option value="local">En este computador (sin internet)</option>
+            <option value="groq">En la nube, con Groq</option>
+          </select>
+        </label>
+        <label class="campo">
+          <span>Clave de Groq (gratis)</span>
+          <input id="cfgGroq" type="password" autocomplete="off" spellcheck="false" placeholder="Pega aquí tu clave gsk_…">
+          <small>Sirve si tu computador es lento para entenderte. Créala gratis en <a href="#" id="lnkGroq">console.groq.com/keys</a>. Se guarda cifrada en este computador y PATCH nunca la muestra.</small>
+        </label>
+        <p class="nota" id="oidoEstado"></p>
+      </div>
+      <p class="nota">Para que descanse y deje de escuchar, dile «silencio» o «descansa» (también sirve mientras habla). Para despertarlo: <b class="atajo2">Ctrl+Alt+P</b> o el icono junto al reloj.</p>
 
       <h3>Windows</h3>
       <label class="interruptor"><input type="checkbox" id="cfgInicio"><span>Abrir PATCH al iniciar el computador</span></label>
-      <p class="nota">Atajo para hablarle sin decir el nombre: <b id="atajo">Ctrl+Alt+Espacio</b></p>
+      <p class="nota">Atajo para hablarle sin decir el nombre: <b id="atajo">Ctrl+Alt+P</b></p>
 
       <h3>Seguridad</h3>
       <p class="nota">Nunca borra por su cuenta. Borrar, enviar correos o compartir archivos exige que escribas la confirmación, y lo borrado va a la papelera.</p>
