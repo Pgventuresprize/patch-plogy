@@ -561,7 +561,7 @@ public sealed class Controlador
         }
         var t = string.IsNullOrWhiteSpace(r.Texto) ? "Listo." : r.Texto;
         AgregarMensaje("asistente", t);
-        if (!barra.Abierta) pildora.Mostrar(Fase.Hablando, Config.Asistente, ParaPantalla(t), siNo: t.TrimEnd().EndsWith("?"));
+        if (!barra.Abierta) pildora.Mostrar(Fase.Hablando, Config.Asistente, ParaPantalla(t), siNo: Texto.EsPreguntaSiNo(t));
         else barra.Enviar(new { tipo = "estado", fase = "hablando", titulo = "", texto = "" });
         Decir(t);
     }
