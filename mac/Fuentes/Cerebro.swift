@@ -77,6 +77,22 @@ final class Cerebro {
 
     var ocupado: Bool { turnoFin != nil }
 
+    /// Una respuesta que llegó sin turno esperando: pasa cuando se sumó un mensaje justo cuando Claude terminaba,
+    /// y Claude lo contesta como un turno aparte.
+    var alSuelta: ((Resultado) -> Void)?
+
+    /// Suma un mensaje a la tarea en curso SIN cortarla: Claude Code lo lee en la siguiente pausa entre herramientas
+    /// y lo tiene en cuenta en la misma respuesta. Devuelve false si la tarea corre en un proceso aparte (acción
+    /// autorizada): entonces se manda después.
+    func agregar(_ texto: String) -> Bool {
+        guard turnoFin != nil, aparte == nil, let v = vivo, v.proceso.isRunning else { return false }
+        let mensaje: [String: Any] = ["type": "user", "message": ["role": "user", "content": texto]]
+        guard let datos = try? JSONSerialization.data(withJSONObject: mensaje) else { return false }
+        v.entrada?.write(datos + Data([0x0A]))
+        Registro.log("Sumado a la tarea: «\(texto)»")
+        return true
+    }
+
     private static var firma: String { Ajustes.modelo + "|" + Ajustes.nombre }
 
     /// La app ya habla y se calla sola: los hooks de voz del proyecto solo le sumarían ~2 s por turno.
@@ -275,8 +291,14 @@ final class Cerebro {
                     Denegado(herramienta: $0["tool_name"] as? String ?? "", entrada: $0["tool_input"] as? [String: Any] ?? [:])
                 }
                 let texto = o["result"] as? String ?? ""
+                let r = Resultado(texto: texto, denegados: denegados, error: o["is_error"] as? Bool ?? false)
+                if turnoFin == nil {
+                    Registro.log("Respuesta suelta (a algo sumado al final): \(texto.prefix(200))")
+                    if !texto.isEmpty || !denegados.isEmpty { alSuelta?(r) }
+                    continue
+                }
                 Registro.log("Respuesta (\(denegados.count) permisos pendientes): \(texto.prefix(200))")
-                terminarTurno(Resultado(texto: texto, denegados: denegados, error: o["is_error"] as? Bool ?? false))
+                terminarTurno(r)
                 if c === aparte {
                     aparte = nil
                     precalentar() // se reabre el proceso continuando la conversación
@@ -309,6 +331,7 @@ final class Cerebro {
     bash scripts/buscar.sh; para leer Word, Excel o PowerPoint, bash scripts/leer.sh; para PDF, la herramienta Read; \
     para ordenar o mover varios archivos, bash scripts/organizar.sh (primero con --vista). \
     Usa comandos sueltos o encadenados con | de los ya aprobados, sin $(...), sin ; y sin bucles: eso siempre pide permiso. \
+    Para contar, | wc -l. \
     La carpeta del usuario es \(NSHomeDirectory()). \
     Nunca escribas tu propio código o script para abrir, convertir o mover archivos, ni para saltarte un permiso, \
     y nunca le pidas al usuario que corra comandos a mano. \

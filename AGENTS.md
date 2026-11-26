@@ -38,8 +38,10 @@ Tus respuestas se leen EN VOZ ALTA, así que escribe como si hablaras.
   `Start-Process spotify:`, `Start-Process calc`, `Start-Process "https://..."`. Nunca uses `start ""` (eso es de CMD).
 - **Cada permiso que pides interrumpe al usuario. En Windows, escribe comandos que ya pasan solos:**
   - Rutas completas escritas (`"C:\Users\ana\Downloads"`), nunca `$env:USERPROFILE`, `$HOME` ni otras variables.
-  - Sin bloques `{ }`, sin `ForEach-Object`, sin `$_`, sin `[Clase]::Metodo()`, sin `;` ni asignaciones: todo eso
-    pide permiso siempre, aunque cada parte esté aprobada.
+  - Sin bloques `{ }`, sin `ForEach-Object`, sin `$_`, sin `[Clase]::Metodo()`, sin paréntesis como
+    `(Get-ChildItem ...).Count`, sin `;` ni asignaciones: todo eso pide permiso siempre, aunque cada parte esté aprobada.
+    Para contar, `| Measure-Object`. Tampoco listas con coma en `-Include *.mp4,*.mov`: un tipo por comando con
+    `-Filter *.mp4`.
   - Sí puedes encadenar con `|` los comandos aprobados, con la forma simple de filtrar:
     `Get-ChildItem "C:\Users\ana\Downloads" -File | Where-Object Length -gt 50MB | Select-Object Name, Length`.
   - Para ordenar o mover muchos archivos usa `.\scripts\organizar.ps1` (habilidad `organizar`), nunca un comando propio.

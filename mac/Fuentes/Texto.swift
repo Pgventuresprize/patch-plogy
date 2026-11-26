@@ -94,6 +94,17 @@ enum Texto {
         return normalizar(oido).contains(where: { palabrasDeDescanso.contains($0) && !propias.contains($0) })
     }
 
+    static let palabrasDeCancelar: Set<String> = ["cancela", "cancelalo", "cancelala", "cancelar", "olvidalo", "olvidala",
+                                                  "olvida", "aborta", "abortar"]
+
+    /// "Cancela", "olvídalo", "para", "espera"…: deja la tarea en curso (sin cerrar el micrófono). Solo frases cortas.
+    static func esCancelacion(_ s: String) -> Bool {
+        let p = normalizar(s)
+        guard !p.isEmpty, p.count <= 4 else { return false }
+        if p.contains(where: { palabrasDeCancelar.contains($0) }) { return true }
+        return ["para", "para ya", "ya para", "para para", "espera", "no espera", "espera espera"].contains(p.joined(separator: " "))
+    }
+
     static func esNegativo(_ s: String) -> Bool {
         let p = Set(normalizar(s))
         return p.contains("no") || p.contains("cancela") || p.contains("cancelar") || p.contains("espera")

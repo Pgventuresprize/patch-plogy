@@ -34,6 +34,12 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var activarAlDespertar = false
     private var calibracion: [String]?
     private var ultimoNivelBarra = Date.distantPast
+    // Mientras trabaja sigue escuchando: lo que se le diga se suma a la tarea en curso, sin cortarla.
+    private var oyendoEnTarea = false   // lo llamaron (o se pulsó el atajo) mientras trabajaba
+    private var ordenEnviada = Date.distantPast
+    private var porSumar = ""           // lo que no se pudo sumar en vivo: va con la siguiente consulta
+    /// Segundos después de dar una orden en los que se puede seguir hablando sin repetir el nombre.
+    private let ventanaContinuacion: TimeInterval = 8
 
     // MARK: Arranque
 
@@ -50,6 +56,12 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         oido.alPalmadas = { [weak self] in self?.palmadas() }
         oido.alNivel = { [weak self] nivel in self?.alNivel(nivel) }
         oido.alTerminarTarea = { [weak self] in self?.tareaTerminada() }
+        cerebro.alSuelta = { [weak self] r in
+            // Contestó aparte algo que se le sumó justo al terminar. Si ya está en otra cosa, solo queda escrito.
+            guard let self = self else { return }
+            if self.fase == .reposo || self.fase == .seguimiento { self.fase = .pensando; self.respuesta(r) }
+            else if !r.texto.isEmpty { self.agregarMensaje("asistente", r.texto) }
+        }
         oido.detector.umbral = Ajustes.umbralPalmada
         oido.detector.alCandidato = { pico, si in
             DispatchQueue.main.async { Registro.log(String(format: "Golpe de sonido %.2f → %@", pico, si ? "palmada" : "no")) }
@@ -142,6 +154,7 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fase = .reposo
         orden = ""
         conNombre = false
+        oyendoEnTarea = false
         // Los permisos pendientes NO se olvidan aquí: se puede responder después escribiendo "sí" en la barra.
         ultimoTexto = ""
         escucharNombre()
@@ -186,10 +199,26 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         switch fase {
-        case .reposo, .pensando:
+        case .pensando:
+            // Trabajando: no se corta la tarea. Lo que diga (con el nombre, tras el atajo o justo después de dar la
+            // orden) se suma a la tarea cuando termina la frase (ver tic).
+            let resto = Ajustes.escucharNombre ? Texto.despuesDelNombre(t, nombre: Ajustes.nombre) : nil
+            if !oyendoEnTarea {
+                if let r = resto {
+                    Registro.log("Me llamaron mientras trabajaba: «\(t)»")
+                    oyendoEnTarea = true; conNombre = true; inicioEscucha = Date(); orden = r
+                } else if Texto.esOrdenDeDescanso(t) {
+                    Registro.log("Orden de descanso mientras trabajaba: «\(t)»"); descansar(); return
+                } else if Date().timeIntervalSince(ordenEnviada) < ventanaContinuacion && !t.isEmpty {
+                    oyendoEnTarea = true; conNombre = false; inicioEscucha = Date()
+                } else { return }
+            }
+            orden = conNombre ? (resto ?? orden) : t
+            mostrarEscuchaEnTarea()
+            if final && !orden.isEmpty { resolverEnTarea() }
+        case .reposo:
             guard Ajustes.escucharNombre, let resto = Texto.despuesDelNombre(t, nombre: Ajustes.nombre) else { return }
             Registro.log("Me llamaron: «\(t)»")
-            if fase == .pensando { cerebro.cancelar() }
             activar(conNombre: true, resto: resto)
         case .escuchando, .seguimiento:
             let nuevo = Texto.despuesDelNombre(t, nombre: Ajustes.nombre) ?? (conNombre ? orden : t)
@@ -226,6 +255,14 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Corta a propósito: si es larga, cualquier conversación cercana se le mandaría como orden.
             let espera: Double = !pendientes.isEmpty ? 20 : (barra.abierta ? 10 : 7)
             if palabraPendiente == nil && ahora.timeIntervalSince(inicioEscucha) > espera { volverAReposo() }
+        case .pensando where oyendoEnTarea:
+            // Lo llamaron mientras trabajaba: si deja de hablar, se suma lo oído; si no dice nada, vuelve a "trabajando".
+            if !orden.trimmingCharacters(in: .whitespaces).isEmpty {
+                if ahora.timeIntervalSince(ultimoCambio) > 1.3 { resolverEnTarea() }
+            } else if ahora.timeIntervalSince(inicioEscucha) > 8 {
+                oyendoEnTarea = false
+                mostrarPensando()
+            }
         case .reposo, .pensando:
             // Renueva la escucha cada ~30 s en un silencio, para que el texto no crezca sin fin.
             if oido.transcribiendo && ahora.timeIntervalSince(oido.inicioTarea) > 30
@@ -245,6 +282,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch fase {
         case .escuchando where !orden.isEmpty:
             enviar()
+        case .pensando where oyendoEnTarea && !orden.isEmpty:
+            resolverEnTarea()
         default:
             let f = fase
             if f == .escuchando { conNombre = false }
@@ -255,6 +294,65 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 else { self.oido.iniciarTranscripcion(pistas: Ajustes.pistas) }
             }
         }
+    }
+
+    // MARK: Hablarle mientras trabaja
+
+    private func mostrarEscuchaEnTarea() {
+        if barra.abierta { estadoBarra("escuchando", "Te escucho (sigo trabajando)…", orden) }
+        else {
+            vista.fase = .escuchando
+            vista.titulo = "Te escucho, sigo trabajando…"
+            vista.texto = orden
+            vista.detalle = nil
+            vista.botones = .ninguno
+            panel.mostrar()
+        }
+    }
+
+    private func mostrarPensando(_ titulo: String = "Sigo trabajando…", _ texto: String = "") {
+        if barra.abierta { estadoBarra("pensando", titulo) }
+        else {
+            vista.fase = .pensando
+            vista.titulo = titulo
+            vista.texto = texto
+            vista.botones = .ninguno
+            panel.mostrar()
+        }
+    }
+
+    /// Terminó la frase dicha mientras trabajaba: "silencio" lo pone a descansar, "cancela" deja la tarea y lo demás
+    /// se suma a la tarea en curso.
+    private func resolverEnTarea() {
+        let texto = orden.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+        oyendoEnTarea = false
+        orden = ""
+        ultimoTexto = ""
+        escucharNombre() // frase nueva: el reconocedor del Mac acumula todo lo oído
+        if texto.isEmpty { mostrarPensando(); return }
+        if Texto.esOrdenDeDescanso(texto) { Registro.log("Orden de descanso mientras trabajaba: «\(texto)»"); descansar(); return }
+        if Texto.esCancelacion(texto) { cancelarTarea(); return }
+        sumarATarea(texto)
+    }
+
+    /// Suma lo dicho a la tarea en curso: Claude Code lo lee en la siguiente pausa entre herramientas.
+    private func sumarATarea(_ texto: String) {
+        Registro.log("Sumado a la tarea en curso: «\(texto)»")
+        agregarMensaje("usuario", texto)
+        ordenEnviada = Date()
+        if !cerebro.agregar("(Te lo dije mientras trabajabas; puede completar o corregir lo anterior.) \(texto)") {
+            porSumar = (porSumar + " " + texto).trimmingCharacters(in: .whitespaces)
+        }
+        mostrarPensando("Lo sumo a lo que estoy haciendo", texto)
+    }
+
+    private func cancelarTarea() {
+        Registro.log("Tarea cancelada por voz")
+        oyendoEnTarea = false
+        porSumar = ""
+        cerebro.cancelar()
+        agregarMensaje("asistente", "Listo, lo dejé.")
+        hablar("Listo, lo dejé.")
     }
 
     // MARK: Hablar con Claude
@@ -283,30 +381,38 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             if Texto.esAfirmativo(texto) {
                 cerebro.recordar(p)
-                consultar("Autorizado. Hazlo ahora.", permitir: p.map { $0.regla }, mostrando: texto)
+                // "Sí, y también dime…": lo que venga con el sí no se pierde.
+                let extra = Texto.normalizar(texto).count > 3 ? " Además me dijo: «\(texto)»" : ""
+                consultar("Autorizado. Hazlo ahora." + extra, permitir: p.map { $0.regla }, mostrando: texto)
                 return
             }
         }
         consultar(texto, mostrando: texto)
     }
 
-    private func consultar(_ texto: String, permitir: [String] = [], mostrando: String) {
+    private func consultar(_ texto: String, permitir: [String] = [], mostrando: String?) {
         fase = .pensando
+        oyendoEnTarea = false
         ultimoTexto = ""
         escucharNombre()
-        agregarMensaje("usuario", mostrando)
+        var texto = texto
+        if let m = mostrando {
+            agregarMensaje("usuario", m)
+            ordenEnviada = Date() // unos segundos para seguir hablando sin repetir el nombre
+        }
+        if !porSumar.isEmpty { texto += "\n\n(Además, mientras trabajabas te dije: \(porSumar))"; porSumar = "" }
         if barra.abierta {
             estadoBarra("pensando", "Pensando…")
         } else {
             vista.fase = .pensando
             vista.titulo = "Pensando…"
-            vista.texto = mostrando
+            vista.texto = mostrando ?? ""
             vista.detalle = nil
             vista.botones = .ninguno
             panel.mostrar()
         }
         cerebro.preguntar(texto, permitir: permitir, estado: { [weak self] e in
-            guard let self = self, self.fase == .pensando else { return }
+            guard let self = self, self.fase == .pensando, !self.oyendoEnTarea else { return }
             if self.barra.abierta { self.estadoBarra("pensando", e) } else { self.vista.titulo = e }
         }, fin: { [weak self] r in
             self?.respuesta(r)
@@ -315,6 +421,23 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func respuesta(_ r: Resultado) {
         guard fase == .pensando else { return }
+        if oyendoEnTarea && r.denegados.isEmpty && !orden.isEmpty {
+            // Terminó mientras le hablaban: la respuesta queda escrita y lo que está diciendo sigue como orden nueva.
+            if !r.texto.isEmpty { agregarMensaje("asistente", r.texto) }
+            oyendoEnTarea = false
+            fase = .escuchando
+            inicioEscucha = Date()
+            ultimoCambio = Date()
+            mostrarEscucha()
+            return
+        }
+        oyendoEnTarea = false
+        if !porSumar.isEmpty && r.denegados.isEmpty && !r.error {
+            // Lo que se dijo mientras trabajaba en un proceso aparte (acción ya autorizada) se manda ahora.
+            if !r.texto.isEmpty { agregarMensaje("asistente", r.texto) }
+            consultar("Sigue con esto.", mostrando: nil)
+            return
+        }
         if !r.denegados.isEmpty {
             pendientes = r.denegados
             pendientesDesde = Date()
@@ -417,6 +540,8 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if palabraPendiente != nil { cancelarConfirmacion() }
         pendientes = []
         orden = ""
+        oyendoEnTarea = false
+        porSumar = ""
         fase = .reposo
         if microfonoListo {
             oido.detenerTranscripcion()
@@ -461,7 +586,15 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .reposo, .seguimiento: activar(conNombre: false, resto: "")
         case .escuchando: if orden.isEmpty { volverAReposo() } else { enviar() }
         case .hablando: boca.callar(); activar(conNombre: false, resto: "")
-        case .pensando: cerebro.cancelar(); activar(conNombre: false, resto: "")
+        case .pensando:
+            // Trabajando: el atajo no corta la tarea; abre el oído para sumarle algo (y otra vez lo manda).
+            if !oyendoEnTarea {
+                oyendoEnTarea = true; conNombre = false; orden = ""; inicioEscucha = Date(); ultimoCambio = Date()
+                ultimoTexto = ""
+                oido.iniciarTranscripcion(pistas: Ajustes.pistas)
+                mostrarEscuchaEnTarea()
+            } else if !orden.isEmpty { resolverEnTarea() }
+            else { oyendoEnTarea = false; mostrarPensando() }
         }
     }
 
@@ -542,9 +675,17 @@ final class Controlador: NSObject, NSApplicationDelegate, NSMenuDelegate {
             enviarConfig()
             barra.enviar(["tipo": "historial", "mensajes": historial])
         case "enviar":
+            if fase == .pensando {
+                // Escribió mientras trabajaba: se suma a la tarea, salvo que sea para pararla.
+                let tx = s("texto").trimmingCharacters(in: .whitespacesAndNewlines)
+                if tx.isEmpty { return }
+                if Texto.esCancelacion(tx) { cancelarTarea() }
+                else if Texto.esOrdenDeDescanso(tx) { descansar() }
+                else { sumarATarea(tx) }
+                return
+            }
             boca.callar()
             turnoVoz += 1
-            if fase == .pensando { cerebro.cancelar() }
             fase = .reposo
             enviar(s("texto"))
         case "microfono": ponerMicrofono(b("on"))
