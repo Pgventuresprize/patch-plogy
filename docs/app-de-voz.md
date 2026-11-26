@@ -198,7 +198,9 @@ nombre. Con voces reales todavía no se ha medido.
   `windows\publicado\` (autocontenida, ~220 MB). `instalar.ps1` la copia a `%LOCALAPPDATA%\PATCH\app`.
 - **Versiones para estudiantes:** al crear una etiqueta `v*` (por ejemplo `git tag -a v2.0.1 -m ... && git push origin v2.0.1`),
   `.github/workflows/windows.yml` compila en Windows y sube `PATCH-windows-x64.zip` (~90 MB) al release.
-  `instalar.ps1` la baja si no hay una versión compilada en la carpeta. **Mientras el repositorio sea privado**, esa
+  `instalar.ps1` la baja si no hay una versión compilada en la carpeta, o si la que hay es más vieja que `<Version>`
+  de `windows/PATCH/PATCH.csproj` (así, al actualizar la carpeta y reinstalar, se baja la app nueva). Subir
+  `<Version>` en cada release. **Mientras el repositorio sea privado**, esa
   descarga solo funciona con GitHub CLI con sesión iniciada y acceso al repositorio. Para los estudiantes hay que hacer
   públicos los releases (o el repositorio), o entregarles el .zip junto con la carpeta.
 - **Mac:** `bash mac/construir.sh`. GitHub Actions (`.github/workflows/mac.yml`) compila y prueba la app de Mac en cada

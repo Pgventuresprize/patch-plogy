@@ -135,6 +135,18 @@ Write-Host "  🔊 Probando la voz…"
 # 8. App de voz (se activa diciendo el nombre del asistente)
 Write-Host ""
 $publicado = Join-Path $DIR 'windows\publicado\PATCH.exe'
+# Al actualizar la carpeta, la app compilada que quedó de antes puede ser más vieja que el proyecto
+# (su interfaz en ui/ ya es la nueva): si es así, se borra para bajar la versión que corresponde.
+if (Test-Path $publicado) {
+  try {
+    $versionApp = [version]((Get-Item $publicado).VersionInfo.FileVersion)
+    $csproj = [IO.File]::ReadAllText((Join-Path $DIR 'windows\PATCH\PATCH.csproj'))
+    if ($csproj -match '<Version>([0-9.]+)</Version>' -and $versionApp -lt [version]$matches[1]) {
+      Write-Host "  · Tu app de voz es la $versionApp y esta carpeta es de la $($matches[1]): bajo la nueva."
+      Remove-Item (Split-Path $publicado) -Recurse -Force
+    }
+  } catch { }
+}
 if (-not (Test-Path $publicado)) {
   # 1) Bajar la versión ya compilada del último release (no necesita nada instalado)
   $zip = Join-Path $env:TEMP 'PATCH-windows-x64.zip'
