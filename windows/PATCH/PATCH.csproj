@@ -14,7 +14,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Marca Plogy (brand kit 02): esfera como ícono de la app y de la bandeja, Plogy Display en la ventanita. -->
     <ApplicationIcon>Marca\plogy.ico</ApplicationIcon>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <Product>PATCH by Plogy</Product>
     <NoWarn>CS0618;CA1416</NoWarn>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
