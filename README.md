@@ -88,6 +88,6 @@ En Windows no hace falta Git Bash. Si tienes Node instalado, agrega una voz natu
 ## Licencia
 El código de PATCH es abierto, con licencia [MIT](LICENSE): puedes usarlo, cambiarlo y compartirlo.
 El nombre Plogy, sus logos y la tipografía Plogy Display son de Plogy y no entran en esa licencia (detalle en
-[LICENSE](LICENSE)).
+[MARCA.md](MARCA.md)).
 
 Hecho por [Plogy](https://plogy.xyz).
