@@ -24,7 +24,7 @@ Pide solo metadatos si no necesitas el contenido (`excludeContentSnippets: true`
 ## 4. Responder
 - **Un resultado claro:** ábrelo si el usuario lo quiere ver ("ábreme", "muéstrame") con `Start-Process "ruta"` (Windows) u `open "ruta"` (Mac).
   Si solo preguntó dónde está, di la carpeta en una frase.
-- **Varios:** di cuántos y los 2 o 3 más probables por nombre y fecha ("El más reciente es Contrato Quality Services, del 23 de noviembre"). Pregunta cuál.
+- **Varios:** di cuántos y los 2 o 3 más probables por nombre y fecha ("El más reciente es Contrato Empresa Ejemplo, del 23 de noviembre"). Pregunta cuál.
 - **Qué dice un documento:** léelo. PDF e imágenes con la herramienta Read; Word, Excel y PowerPoint con
   `.\scripts\leer.ps1 -Ruta "ruta"` (Windows) o `bash scripts/leer.sh "ruta"` (Mac). Responde lo que preguntó, en 1 a 3 frases.
 - Nunca leas en voz alta rutas completas: di el nombre del archivo y la carpeta.

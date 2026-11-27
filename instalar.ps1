@@ -101,9 +101,13 @@ Write-Host "  ✓ $nombre puede leer tu carpeta $HOME (salvo AppData, .ssh y arc
 
 # 6. Revisiones
 Write-Host ""
-if (Get-Command claude -ErrorAction SilentlyContinue) { Write-Host "  ✓ Claude Code instalado" }
-else { Write-Host "  ✗ Falta Claude Code. Instálalo con:"; Write-Host "      irm https://claude.ai/install.ps1 | iex" }
-if (Get-Command codex -ErrorAction SilentlyContinue) { Write-Host "  ✓ Codex instalado" } else { Write-Host "  · Codex no está instalado (opcional)." }
+# PATCH piensa con tu cuenta de Claude (Claude Code) o de ChatGPT (Codex). Si falta alguno, la app lo instala
+# y abre su inicio de sesión desde la pantalla de bienvenida (botones Instalar e Iniciar sesión).
+$hayClaude = (Get-Command claude -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $HOME '.local\bin\claude.exe'))
+$hayCodex = (Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $env:APPDATA 'npm\codex.cmd')) -or
+  (Test-Path (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin'))
+if ($hayClaude) { Write-Host "  ✓ Claude Code instalado" } else { Write-Host "  · Claude Code aún no está: lo instalas desde la app (Conecta tu cuenta > Instalar)." }
+if ($hayCodex) { Write-Host "  ✓ Codex instalado (para usar tu cuenta de ChatGPT)" } else { Write-Host "  · Codex aún no está: solo hace falta si vas a usar tu cuenta de ChatGPT." }
 
 # 7. Voz natural (Edge) si hay Node; si no, la voz de Windows
 $vozNatural = $false
@@ -135,6 +139,18 @@ Write-Host "  🔊 Probando la voz…"
 # 8. App de voz (se activa diciendo el nombre del asistente)
 Write-Host ""
 $publicado = Join-Path $DIR 'windows\publicado\PATCH.exe'
+# Al actualizar la carpeta, la app compilada que quedó de antes puede ser más vieja que el proyecto
+# (su interfaz en ui/ ya es la nueva): si es así, se borra para bajar la versión que corresponde.
+if (Test-Path $publicado) {
+  try {
+    $versionApp = [version]((Get-Item $publicado).VersionInfo.FileVersion)
+    $csproj = [IO.File]::ReadAllText((Join-Path $DIR 'windows\PATCH\PATCH.csproj'))
+    if ($csproj -match '<Version>([0-9.]+)</Version>' -and $versionApp -lt [version]$matches[1]) {
+      Write-Host "  · Tu app de voz es la $versionApp y esta carpeta es de la $($matches[1]): bajo la nueva."
+      Remove-Item (Split-Path $publicado) -Recurse -Force
+    }
+  } catch { }
+}
 if (-not (Test-Path $publicado)) {
   # 1) Bajar la versión ya compilada del último release (no necesita nada instalado)
   $zip = Join-Path $env:TEMP 'PATCH-windows-x64.zip'

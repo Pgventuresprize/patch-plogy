@@ -1,7 +1,7 @@
 ﻿# PATCH busca documentos en Windows, por nombre y por contenido, usando el índice de búsqueda de Windows.
 # Si el índice no responde, busca por nombre recorriendo las carpetas (más lento).
 #
-# Uso: .\scripts\buscar.ps1 -Consulta "contrato tuvet" [-Tipo pdf] [-Dias 30] [-Carpeta "C:\ruta"] [-Max 20]
+# Uso: .\scripts\buscar.ps1 -Consulta "contrato acme" [-Tipo pdf] [-Dias 30] [-Carpeta "C:\ruta"] [-Max 20]
 #   -Consulta  palabras que deben aparecer en el nombre o dentro del archivo (todas)
 #   -Tipo      documento | pdf | word | excel | presentacion | imagen | video | audio | comprimido | carpeta | cualquiera
 #   -Dias      solo archivos modificados en los últimos N días

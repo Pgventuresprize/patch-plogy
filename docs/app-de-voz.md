@@ -145,7 +145,7 @@ pasos: bienvenida, **conectar la cuenta**, nombre del asistente y del usuario co
   respondió y recordó el contexto en el segundo turno.
 
 ## Marca (brand kit 02 de Plogy)
-Todo lo visual sale del brand kit 02 (`C:\clipwork\brandkit02` en el equipo de Juanfra; copia en el repo):
+Todo lo visual sale del brand kit 02 (copia en el repo: `ui/marca/`):
 - `ui/estilo.css`: tokens `--plogy-*` del kit, tema oscuro sobre tinta `#171310`, Plogy Display (`ui/marca/`) en títulos,
   nombre y botones, Helvetica Neue → Arial en el texto, botones en píldora naranja con texto tinta (contraste del kit),
   radios 12/24/999, la esfera coral→violeta como avatar y en los puntos de «pensando».
@@ -198,7 +198,9 @@ nombre. Con voces reales todavía no se ha medido.
   `windows\publicado\` (autocontenida, ~220 MB). `instalar.ps1` la copia a `%LOCALAPPDATA%\PATCH\app`.
 - **Versiones para estudiantes:** al crear una etiqueta `v*` (por ejemplo `git tag -a v2.0.1 -m ... && git push origin v2.0.1`),
   `.github/workflows/windows.yml` compila en Windows y sube `PATCH-windows-x64.zip` (~90 MB) al release.
-  `instalar.ps1` la baja si no hay una versión compilada en la carpeta. **Mientras el repositorio sea privado**, esa
+  `instalar.ps1` la baja si no hay una versión compilada en la carpeta, o si la que hay es más vieja que `<Version>`
+  de `windows/PATCH/PATCH.csproj` (así, al actualizar la carpeta y reinstalar, se baja la app nueva). Subir
+  `<Version>` en cada release. **Mientras el repositorio sea privado**, esa
   descarga solo funciona con GitHub CLI con sesión iniciada y acceso al repositorio. Para los estudiantes hay que hacer
   públicos los releases (o el repositorio), o entregarles el .zip junto con la carpeta.
 - **Mac:** `bash mac/construir.sh`. GitHub Actions (`.github/workflows/mac.yml`) compila y prueba la app de Mac en cada
