@@ -32,7 +32,7 @@ ruta real, también dentro de OneDrive) o una ruta completa entre comillas.
 
 ## Casos que el script no cubre
 - **Agrupar por cliente o proyecto** (cuando el nombre del archivo no basta): decide el grupo de cada archivo y usa
-  `-Patron` por grupo (por ejemplo, `-Patron "*Eira*" -Destino "Clientes\Eira"`). Si los nombres no tienen el cliente,
+  `-Patron` por grupo (por ejemplo, `-Patron "*Acme*" -Destino "Clientes\Acme"`). Si los nombres no tienen el cliente,
   mueve uno por uno con `Move-Item "origen" "destino"` (sin `-Force`) / `mv -n`, con rutas completas escritas.
 - **Renombrar uno:** `Rename-Item "ruta" "nombre nuevo"` / `mv -n`.
 - **Drive:** para mover usa `update_file` con `parentId` (antes revisa `canMoveItemWithinDrive`); para renombrar,

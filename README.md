@@ -10,18 +10,32 @@ computador: no necesitas claves de API, solo iniciar sesión con la cuenta que y
 La primera vez que abres la app, un recorrido corto te ayuda a conectar tu cuenta, ponerle nombre y voz a tu
 asistente y elegir cómo hablarle. Puedes repetirlo desde Ajustes.
 
-## Instalar (una sola vez)
-**Mac:** abre Terminal, escribe `cd `, arrastra esta carpeta a la ventana y presiona Enter. Luego:
+## Instalar (una sola vez, unos 10 minutos)
+**📄 Guía paso a paso con imágenes: [Guia-instalacion-PATCH.pdf](docs/Guia-instalacion-PATCH.pdf)**
+
+Necesitas una suscripción de pago de **Claude** (Pro o Max) o de **ChatGPT** (Plus o superior).
+
+**Windows:** abre PowerShell (tecla Windows, escribe `PowerShell` y presiona Enter), pega esta línea y presiona Enter:
 ```
-bash instalar.sh
+irm https://raw.githubusercontent.com/Pgventuresprize/patch-plogy/main/instalar-web.ps1 | iex
 ```
-**Windows:** clic derecho en la carpeta > "Abrir en Terminal" y luego:
+**Mac (beta):** abre Terminal, pega esta línea y presiona Enter:
 ```
-powershell -ExecutionPolicy Bypass -File .\instalar.ps1
+curl -fsSL https://raw.githubusercontent.com/Pgventuresprize/patch-plogy/main/instalar-web.sh | bash
 ```
-El instalador pregunta cómo quieres llamar a tu asistente y cómo te llama a ti.
+El instalador pregunta cómo quieres llamar a tu asistente y cómo te llama a ti, y al final abre PATCH con una
+bienvenida: en **Conecta tu cuenta** toca **Instalar** (si aparece) y luego **Iniciar sesión**, entra con tu cuenta en
+el navegador y dale **Autorizar**. Después le pones nombre y voz, y listo.
+
+Para actualizar, pega la misma línea otra vez: tu configuración, tus notas y tus comandos se conservan.
+
+<details><summary>Instalar desde una copia de la carpeta</summary>
+
+**Windows:** clic derecho en la carpeta > "Abrir en Terminal" y luego `powershell -ExecutionPolicy Bypass -File .\instalar.ps1`.
+**Mac:** abre Terminal en la carpeta y luego `bash instalar.sh`.
 En Windows no hace falta Git Bash. Si tienes Node instalado, agrega una voz natural en español
 (la de Microsoft Edge, gratis, necesita internet). Si no, usa la voz del sistema.
+</details>
 
 ## Usar
 **Con la app** (Mac: barra de menú · Windows: junto a la barra de tareas):
@@ -70,3 +84,10 @@ En Windows no hace falta Git Bash. Si tienes Node instalado, agrega una voz natu
 - [ ] "Investiga …" → deja una nota en `notas/` con fuentes
 - [ ] "Silencio" / "habla" funcionan
 - [ ] App: decir el nombre abre la ventanita; tocarla abre la barra lateral
+
+## Licencia
+El código de PATCH es abierto, con licencia [MIT](LICENSE): puedes usarlo, cambiarlo y compartirlo.
+El nombre Plogy, sus logos y la tipografía Plogy Display son de Plogy y no entran en esa licencia (detalle en
+[LICENSE](LICENSE)).
+
+Hecho por [Plogy](https://plogy.xyz).

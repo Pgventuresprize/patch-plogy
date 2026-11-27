@@ -145,7 +145,7 @@ pasos: bienvenida, **conectar la cuenta**, nombre del asistente y del usuario co
   respondió y recordó el contexto en el segundo turno.
 
 ## Marca (brand kit 02 de Plogy)
-Todo lo visual sale del brand kit 02 (`C:\clipwork\brandkit02` en el equipo de Juanfra; copia en el repo):
+Todo lo visual sale del brand kit 02 (copia en el repo: `ui/marca/`):
 - `ui/estilo.css`: tokens `--plogy-*` del kit, tema oscuro sobre tinta `#171310`, Plogy Display (`ui/marca/`) en títulos,
   nombre y botones, Helvetica Neue → Arial en el texto, botones en píldora naranja con texto tinta (contraste del kit),
   radios 12/24/999, la esfera coral→violeta como avatar y en los puntos de «pensando».

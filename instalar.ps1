@@ -101,9 +101,13 @@ Write-Host "  ✓ $nombre puede leer tu carpeta $HOME (salvo AppData, .ssh y arc
 
 # 6. Revisiones
 Write-Host ""
-if (Get-Command claude -ErrorAction SilentlyContinue) { Write-Host "  ✓ Claude Code instalado" }
-else { Write-Host "  ✗ Falta Claude Code. Instálalo con:"; Write-Host "      irm https://claude.ai/install.ps1 | iex" }
-if (Get-Command codex -ErrorAction SilentlyContinue) { Write-Host "  ✓ Codex instalado" } else { Write-Host "  · Codex no está instalado (opcional)." }
+# PATCH piensa con tu cuenta de Claude (Claude Code) o de ChatGPT (Codex). Si falta alguno, la app lo instala
+# y abre su inicio de sesión desde la pantalla de bienvenida (botones Instalar e Iniciar sesión).
+$hayClaude = (Get-Command claude -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $HOME '.local\bin\claude.exe'))
+$hayCodex = (Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $env:APPDATA 'npm\codex.cmd')) -or
+  (Test-Path (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin'))
+if ($hayClaude) { Write-Host "  ✓ Claude Code instalado" } else { Write-Host "  · Claude Code aún no está: lo instalas desde la app (Conecta tu cuenta > Instalar)." }
+if ($hayCodex) { Write-Host "  ✓ Codex instalado (para usar tu cuenta de ChatGPT)" } else { Write-Host "  · Codex aún no está: solo hace falta si vas a usar tu cuenta de ChatGPT." }
 
 # 7. Voz natural (Edge) si hay Node; si no, la voz de Windows
 $vozNatural = $false

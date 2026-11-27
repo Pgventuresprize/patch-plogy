@@ -1,6 +1,6 @@
 #!/bin/bash
 # PATCH busca documentos en Mac, por nombre y por contenido, con Spotlight (mdfind).
-# Uso: bash scripts/buscar.sh "contrato tuvet" [tipo] [dias] [max]
+# Uso: bash scripts/buscar.sh "contrato acme" [tipo] [dias] [max]
 #   tipo: documento | pdf | word | excel | presentacion | imagen | video | audio | comprimido | carpeta | cualquiera
 # Salida: una línea por archivo:  fecha | tamaño | ruta
 CONSULTA="$1"; TIPO="${2:-cualquiera}"; DIAS="${3:-0}"; MAX="${4:-20}"
