@@ -4,6 +4,7 @@
 # Baja PATCH a la carpeta del usuario (patch-plogy) y corre instalar.ps1. Si ya estaba, la actualiza:
 # patch-config.txt, notas y comandos no vienen en la descarga, asi que se conservan.
 # Variables opcionales: PATCH_CARPETA (otra carpeta) y PATCH_SOLO_DESCARGAR=1 (bajar sin instalar).
+& {
 $ErrorActionPreference = 'Stop'
 $repo = 'Pgventuresprize/patch-plogy'
 $destino = if ($env:PATCH_CARPETA) { $env:PATCH_CARPETA } else { Join-Path $HOME 'patch-plogy' }
@@ -30,3 +31,4 @@ if ((Test-Path (Join-Path $destino '.git')) -and (Get-Command git -ErrorAction S
 Write-Host "  - PATCH esta en $destino"
 if ($env:PATCH_SOLO_DESCARGAR -eq '1') { return }
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $destino 'instalar.ps1')
+}
